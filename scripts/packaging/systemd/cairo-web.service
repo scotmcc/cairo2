@@ -1,0 +1,9 @@
+[Unit]
+Description=Cairo web agent
+
+[Service]
+ExecStart=/usr/local/bin/cairo-web
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Cairo AI agent server
+Documentation=https://github.com/scotmcc/cairo2
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cairo serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

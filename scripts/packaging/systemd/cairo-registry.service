@@ -1,0 +1,23 @@
+[Unit]
+Description=Cairo fleet registry
+Documentation=https://github.com/scotmcc/cairo2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cairo
+Group=cairo
+ExecStart=/usr/local/bin/cairo-registry
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/cairo-registry
+StateDirectory=cairo-registry
+RuntimeDirectory=cairo-registry
+
+[Install]
+WantedBy=multi-user.target

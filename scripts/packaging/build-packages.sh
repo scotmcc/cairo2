@@ -240,75 +240,6 @@ copy_standalone_vsix() {
 }
 
 # ---------------------------------------------------------------------------
-# Unit file helpers (content embedded inline; Batch 3 extracts to systemd/)
-# ---------------------------------------------------------------------------
-
-write_cairo_service_unit() {
-    cat > "$1" <<'UNIT_EOF'
-[Unit]
-Description=Cairo AI agent server
-Documentation=https://github.com/scotmcc/cairo2
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/cairo serve
-Restart=on-failure
-RestartSec=5
-NoNewPrivileges=yes
-PrivateTmp=yes
-
-[Install]
-WantedBy=default.target
-UNIT_EOF
-    chmod 0644 "$1"
-}
-
-write_cairo_web_service_unit() {
-    cat > "$1" <<'UNIT_EOF'
-[Unit]
-Description=Cairo web agent
-
-[Service]
-ExecStart=/usr/local/bin/cairo-web
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-UNIT_EOF
-    chmod 0644 "$1"
-}
-
-write_registry_service_unit() {
-    cat > "$1" <<'UNIT_EOF'
-[Unit]
-Description=Cairo fleet registry
-Documentation=https://github.com/scotmcc/cairo2
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=cairo
-Group=cairo
-ExecStart=/usr/local/bin/cairo-registry
-Restart=on-failure
-RestartSec=5
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-ReadWritePaths=/var/lib/cairo-registry
-StateDirectory=cairo-registry
-RuntimeDirectory=cairo-registry
-
-[Install]
-WantedBy=multi-user.target
-UNIT_EOF
-    chmod 0644 "$1"
-}
-
-# ---------------------------------------------------------------------------
 # postinst / prerm helpers
 # ---------------------------------------------------------------------------
 
@@ -519,9 +450,9 @@ create_cairo_deb() {
         mkdir -p "$pkg_dir/usr/share/cairo/web-agent"
         cp -a "$WEB_AGENT_STAGE"/. "$pkg_dir/usr/share/cairo/web-agent/"
         install -m 0755 "$REPO_ROOT/scripts/cairo-web.sh" "$pkg_dir/usr/local/bin/cairo-web"
-        write_cairo_web_service_unit "$pkg_dir/usr/lib/systemd/user/cairo-web.service"
+        cp "$SCRIPT_DIR/systemd/cairo-web.service" "$pkg_dir/usr/lib/systemd/user/cairo-web.service"
     fi
-    write_cairo_service_unit "$pkg_dir/usr/lib/systemd/user/cairo.service"
+    cp "$SCRIPT_DIR/systemd/cairo.service" "$pkg_dir/usr/lib/systemd/user/cairo.service"
 
     cat > "$pkg_dir/DEBIAN/control" <<CONTROL_EOF
 Package: cairo
@@ -575,7 +506,7 @@ create_registry_deb() {
     mkdir -p "$pkg_dir/DEBIAN" "$pkg_dir/usr/local/bin" "$pkg_dir/usr/lib/systemd/system"
 
     install -m 0755 "$BIN_DIR/cairo-registry" "$pkg_dir/usr/local/bin/cairo-registry"
-    write_registry_service_unit "$pkg_dir/usr/lib/systemd/system/cairo-registry.service"
+    cp "$SCRIPT_DIR/systemd/cairo-registry.service" "$pkg_dir/usr/lib/systemd/system/cairo-registry.service"
 
     cat > "$pkg_dir/DEBIAN/control" <<CONTROL_EOF
 Package: cairo-registry
@@ -690,7 +621,7 @@ create_cairo_rpm() {
     fi
 
     if [[ "$SKIP_WEB_AGENT" != true ]]; then
-        write_cairo_web_service_unit "$pkg_dir/cairo-web.service"
+        cp "$SCRIPT_DIR/systemd/cairo-web.service" "$pkg_dir/cairo-web.service"
         web_agent_install_lines="install -D -m 0755 \"$REPO_ROOT/scripts/cairo-web.sh\" \"%{buildroot}/usr/local/bin/cairo-web\"
 mkdir -p \"%{buildroot}/usr/share/cairo/web-agent\"
 cp -a \"$WEB_AGENT_STAGE\"/. \"%{buildroot}/usr/share/cairo/web-agent/\"
@@ -705,7 +636,7 @@ install -D -m 0644 \"$pkg_dir/cairo-web.service\" \"%{buildroot}/usr/lib/systemd
     fi
     files_block+="${vsix_files_block}"
 
-    write_cairo_service_unit "$pkg_dir/cairo.service"
+    cp "$SCRIPT_DIR/systemd/cairo.service" "$pkg_dir/cairo.service"
     write_cairo_postinst "$pkg_dir/postinst.sh"
     write_cairo_prerm    "$pkg_dir/prerm.sh"
     local postinst_body prerm_body
@@ -778,7 +709,7 @@ create_registry_rpm() {
     spec_file="$pkg_dir/cairo-registry.spec"
     mkdir -p "$topdir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 
-    write_registry_service_unit "$pkg_dir/cairo-registry.service"
+    cp "$SCRIPT_DIR/systemd/cairo-registry.service" "$pkg_dir/cairo-registry.service"
     write_registry_postinst "$pkg_dir/postinst.sh"
     write_registry_prerm    "$pkg_dir/prerm.sh"
     local postinst_body prerm_body
