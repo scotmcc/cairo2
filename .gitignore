@@ -22,6 +22,7 @@ Thumbs.db
 
 # Go binary output
 /bin/
+/dist/
 /cairo
 /cairo-registry
 /cairo-ctl
