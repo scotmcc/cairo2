@@ -284,7 +284,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if registryURL, _ := database.Config.Get(config.KeyRegistryURL); registryURL != "" {
+	registryURL, _ := database.Config.Get(config.KeyRegistryURL)
+	if registryURL != "" {
 		agentID, _ := database.Config.Get(config.KeyRegistryAgentID)
 		newID, err := registry.Register(ctx, registryURL, agentID, version)
 		if err != nil {
@@ -307,15 +308,16 @@ func main() {
 	}
 
 	app := &App{
-		DB:         database,
-		LLM:        llmClient,
-		OllamaURL:  ollamaURL,
-		EmbedModel: embedModel,
-		Model:      model,
-		Session:    session,
-		Agent:      a,
-		Choices:    choiceRequests,
-		RegistryWG: &bgWg,
+		DB:          database,
+		LLM:         llmClient,
+		OllamaURL:   ollamaURL,
+		EmbedModel:  embedModel,
+		Model:       model,
+		Session:     session,
+		Agent:       a,
+		Choices:     choiceRequests,
+		RegistryURL: registryURL,
+		RegistryWG:  &bgWg,
 	}
 
 	if singleMessage != "" {
