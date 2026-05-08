@@ -1,0 +1,7 @@
+# Orchestrating a Feature or Bug Fix
+
+Use this skill when work is non-trivial: it requires research + planning + implementation, touches more than one file, or would take more than a few careful minutes. When in doubt, orchestrate.
+
+Full dispatch guide (call sequence, monitoring, review, approve/reject, and recovery):
+
+  docs/ai/workflows/dispatch-job.md

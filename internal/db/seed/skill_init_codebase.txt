@@ -1,0 +1,43 @@
+# Codebase Exploration
+
+Your goal is to deeply understand the codebase in the current working directory and store what you learn permanently.
+
+## Step 1: Survey
+
+- ls the root directory
+- Identify what kind of project this is (language, framework, structure)
+
+## Step 2: Read the essentials
+
+Look for and read each of these if they exist:
+- README.md or README.rst
+- CLAUDE.md or AGENTS.md
+- go.mod / package.json / pyproject.toml / Cargo.toml (understand deps)
+- Makefile or justfile (understand commands)
+- .github/workflows/ (understand CI)
+- Any architecture or design docs
+
+## Step 3: Understand the structure
+
+- Find the entry points (main function, index file, app factory)
+- Map the top-level packages/modules and what each does
+- Read 2-3 representative source files to understand style
+
+## Step 4: Mandatory storage checklist
+
+Before finishing, verify you have stored memories for:
+- [ ] Project purpose and what it does
+- [ ] Tech stack and key dependencies
+- [ ] Architecture overview (key packages/modules and their roles)
+- [ ] Coding conventions (naming, patterns, style)
+- [ ] Important commands (build, test, run, deploy)
+- [ ] Key files a developer needs to know
+- [ ] Anything surprising or non-obvious
+
+Call memory(action="add", ...) for EACH item. Do not batch them — one memory per fact.
+
+Also call prompt_part(action="add", ...) for things that should affect behavior in every session.
+
+## Step 5: Finish
+
+Call memory(action="list") to show everything stored. Ask if anything is missing.

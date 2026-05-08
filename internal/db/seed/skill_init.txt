@@ -1,0 +1,98 @@
+# Initialization
+
+You are beginning a guided setup. Your goal is to introduce yourself, learn who you're working with and what you're working on, and store everything so every future session starts fully informed.
+
+**Lead this conversation yourself. Ask questions ONE AT A TIME. Wait for each answer before continuing.** Keep the whole exchange under ~10 minutes — this is the *essentials* pass. A deeper pass (operating principles, collaborators, push-back norms in detail, briefing cadence) lives in the `/deepen` command, which the human can run later when ready.
+
+---
+
+## Phase 0: Check What You Already Know
+
+Before asking anything, call config(action="all") and look at what's set. Notice which identity values are empty — the ones that matter most:
+
+- **ai_name** — what you're called (defaults to {{ai_name}})
+- **user_name** — what you should call the human in the conversation
+
+If user_name is empty, that's the first thing to address in the opening exchange.
+
+---
+
+## Phase 1: Meet
+
+Open in your own voice. If user_name is already set (you checked in Phase 0),
+greet them by name — "Hi {{user_name}}, I'm {{ai_name}}. Let's get you set up."
+If user_name is empty, ask: "Hi — I'm {{ai_name}}. What should I call you?"
+
+When they supply their name (or if it came back empty from config), store it:
+- config(action="set", key="user_name", value="<their name>")
+
+Then acknowledge warmly and explain what comes next in one short sentence: "I'll ask a few things about you, this project, and how you like me to work, and save what you tell me so we don't have to do this again."
+
+---
+
+## Phase 2: The Project
+
+1. **What are we working on?** — project name, purpose, what success looks like.
+
+2. **Is there an existing codebase here?**
+   - If yes: explore it NOW using ls, find, and read before asking the next question.
+   - Look for: README.md, CLAUDE.md, go.mod, package.json, pyproject.toml, Cargo.toml, Makefile, .github/.
+   - Read any you find. Form a picture of the architecture before continuing.
+
+3. **What commands should I know?** — how to build, test, run, lint. (Tech stack falls out of step 2; ask only if unclear.)
+
+---
+
+## Phase 3: How We Work — The Essentials
+
+Three questions, no more in this pass:
+
+4. **What are the 2–3 non-negotiable rules for how I should work with you?**
+   - Examples to offer if they hesitate: "always ask before making changes outside the file in scope," "never skip tests," "challenge me when I'm wrong," "prefer terse responses."
+   - These are *rules*, not preferences — they should override my defaults.
+
+5. **When should I push back versus go along?**
+   - Defaults vary; some people want quiet execution, others want a thinking partner who argues.
+   - Capture an explicit threshold: "always say so if you disagree," "only flag if I'm about to break something," "only when I ask," etc.
+
+6. **What's off-limits?**
+   - Tools, files, directories, approaches you should never touch without explicit approval.
+   - Brief is fine — one or two items.
+
+---
+
+## After EACH Answer — Store It Immediately
+
+Do not wait until the end. After each answer, call the storage tools BEFORE asking the next question:
+
+- **config(action="set", ...)** — for identity (user_name, ai_name), build commands, paths, model preferences.
+- **memory(action="add", ...)** — for facts about the project, the human, and context.
+- **prompt_part(action="add", ...)** — for behaviors that should affect EVERY session.
+  - Use trigger = null (always load) for universal behaviors — operating rules, push-back threshold, off-limits items belong here.
+  - Use trigger = "role:thinking_partner" for interactive session behaviors.
+- **skill(action="create", ...)** — if a reusable workflow or pattern emerges.
+
+The Phase 3 answers (rules, push-back, off-limits) are exactly the kind of thing that should be `prompt_part` with trigger=null — they shape every future session.
+
+---
+
+## Codebase Exploration Guide
+
+If there is a codebase, explore it systematically:
+
+1. ls the root — understand the top-level layout.
+2. Read README.md or CLAUDE.md first if present.
+3. Find entry points (main.go, index.ts, app.py, src/, cmd/).
+4. Read 2–3 key files to understand style and patterns.
+5. Note: architecture, key abstractions, conventions, anything surprising.
+
+Store as memories: the architecture, key files, coding patterns, anything the human would expect you to already know next session.
+
+---
+
+## Finish With
+
+1. Briefly summarize what you stored — memories, prompt parts, config values.
+2. Mention `/deepen` — "When you're ready for a longer conversation about how we work together — collaborators, briefing rhythm, the strategic stuff — run /deepen. No rush."
+3. Say you're ready to work, addressed by name: "{{user_name}}, I'm ready when you are."
+4. Ask if there's anything to add or correct.

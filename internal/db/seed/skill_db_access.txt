@@ -1,0 +1,32 @@
+## When to use
+
+Use `bash sqlite3 ~/.cairo/cairo.db "<query>"` when you need to inspect or modify the DB and no dedicated tool covers your need. Common cases:
+- Listing roles, sessions, prompt parts, dream records.
+- Reading the assembled prompt's components.
+- Targeted edits to a config or role row.
+
+## Discipline (non-negotiable)
+
+1. **Backup first when modifying.** Before any UPDATE / DELETE / INSERT, run:
+   `bash cp ~/.cairo/cairo.db ~/.cairo/cairo.db.backup-$(date +%Y%m%d-%H%M%S)`
+   No backup, no write. The DB is the user's identity — losing it is catastrophic.
+
+2. **Targeted changes only.** Always use a `WHERE` clause. Never `UPDATE roles SET model = '...'` without `WHERE name = '...'`. Never `DELETE FROM memories` without `WHERE id = ...`. Bare table operations are forbidden.
+
+3. **Never DDL.** Do NOT run `CREATE TABLE`, `DROP TABLE`, `ALTER TABLE`, `CREATE INDEX`, etc. Schema changes go through the migration system in `internal/db/schema.go`. If you think the schema needs to change, STOP and surface it to the user.
+
+4. **Read-only queries are safe** but still use specific `SELECT` columns rather than `SELECT *` when you can — keeps output lean.
+
+5. **Show the user what you're about to do** when modifying. Print the SQL, ask for confirmation if anything looks ambiguous, especially before DELETE.
+
+## Common queries (cookbook)
+
+- List roles + models: `SELECT name, model FROM roles;`
+- List sessions: `SELECT id, name, created_at FROM sessions ORDER BY created_at DESC;`
+- Show prompt parts: `SELECT key, trigger, enabled FROM prompt_parts;`
+- Read soul: `SELECT value FROM config WHERE key = 'soul_prompt';`
+- Search dreams: `SELECT id, summary, started_at FROM dreams ORDER BY started_at DESC LIMIT 20;`
+
+## When NOT to use this skill
+
+If a dedicated tool (`memory_tool`, `learn`, `soul`) covers your case, use the tool. This skill is for the long tail.
