@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "composite": true,
+    "rootDir": "..",
+    "outDir": "../dist/server",
+    "tsBuildInfoFile": "../dist/server.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "../shared/**/*.ts"]
+}

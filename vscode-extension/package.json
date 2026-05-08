@@ -1,0 +1,180 @@
+{
+  "name": "cairo-vscode",
+  "displayName": "Cairo Coding Agent",
+  "description": "AI coding agent with project-local identity state, backed by your local Cairo install",
+  "version": "0.3.0",
+  "publisher": "sgreen",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "cairo-sidebar",
+          "title": "Cairo",
+          "icon": "resources/cairo-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "cairo-sidebar": [
+        {
+          "type": "webview",
+          "id": "cairoChat",
+          "name": "Cairo"
+        }
+      ]
+    },
+    "chatParticipants": [
+      {
+        "id": "cairo-vscode.cairo",
+        "name": "Cairo",
+        "fullName": "Cairo",
+        "description": "Cairo AI coding agent — uses your local Cairo install",
+        "isSticky": false,
+        "locations": [
+          "panel"
+        ],
+        "modes": [
+          "ask"
+        ],
+        "commands": [
+          {
+            "name": "new",
+            "description": "Start a fresh Cairo session"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "cairo.openChat",
+        "title": "Cairo: Open Chat"
+      },
+      {
+        "command": "cairo.showConfig",
+        "title": "Cairo: Show Configuration"
+      },
+      {
+        "command": "cairo.newSession",
+        "title": "Cairo: New Session"
+      },
+      {
+        "command": "cairo.sendSelection",
+        "title": "Cairo: Send Selection to Cairo"
+      },
+      {
+        "command": "cairo.sendFile",
+        "title": "Cairo: Attach Current File to Cairo"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        { "command": "cairo.openChat" },
+        { "command": "cairo.showConfig" },
+        { "command": "cairo.newSession" },
+        { "command": "cairo.sendSelection", "when": "editorHasSelection" },
+        { "command": "cairo.sendFile", "when": "editorIsOpen" }
+      ],
+      "editor/context": [
+        {
+          "command": "cairo.sendSelection",
+          "when": "editorHasSelection",
+          "group": "cairo@1"
+        },
+        {
+          "command": "cairo.sendFile",
+          "when": "editorIsOpen",
+          "group": "cairo@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "cairo.sendFile",
+          "group": "cairo@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "cairo.sendSelection",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "cairo.openChat",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a"
+      }
+    ],
+    "configuration": {
+      "title": "Cairo",
+      "properties": {
+        "cairo-vscode.cairoExecutable": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the cairo binary. Leave empty to auto-detect from common locations."
+        },
+        "cairo-vscode.ollamaUrl": {
+          "type": "string",
+          "default": "",
+          "description": "LLM endpoint URL. Leave empty to use whatever Cairo has stored in its DB (recommended — set it once with `cairo /config` in the terminal). Setting this overrides Cairo's stored URL via the OLLAMA_URL env var."
+        },
+        "cairo-vscode.model": {
+          "type": "string",
+          "default": "",
+          "description": "Default model name. Leave empty to use Cairo's stored config."
+        },
+        "cairo-vscode.embedModel": {
+          "type": "string",
+          "default": "",
+          "description": "Embedding model. Leave empty to use Cairo's stored config."
+        },
+        "cairo-vscode.summaryModel": {
+          "type": "string",
+          "default": "",
+          "description": "Summary model. Leave empty to use Cairo's stored config."
+        },
+        "cairo-vscode.keepAlive": {
+          "type": "string",
+          "default": "",
+          "description": "Keep-alive duration. Leave empty to use Cairo's stored config."
+        },
+        "cairo-vscode.dataDir": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Cairo data directory for the VS Code extension. Leave empty to share Cairo's default database."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc --noEmit",
+    "bundle": "webpack --mode production",
+    "watch": "webpack --mode development --watch",
+    "build": "bash ../scripts/build-extension.sh build",
+    "package": "bash ../scripts/build-extension.sh package",
+    "build:vsix": "bash ../scripts/build-extension.sh",
+    "build:all": "bash ../scripts/build-extension.sh",
+    "install:local": "bash ../scripts/install-extension.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.1",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.3.0",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4"
+  }
+}
