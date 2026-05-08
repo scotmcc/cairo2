@@ -1,6 +1,6 @@
 SYSTEM_BIN_DIR = /usr/local/bin
 
-.PHONY: build install test lint run clean help
+.PHONY: build install test lint run clean package help
 
 help:
 	@echo "cairo2 Makefile targets:"
@@ -12,10 +12,7 @@ help:
 	@echo "  make clean    remove ./bin"
 
 build:
-	@mkdir -p ./bin
-	go build -o ./bin/cairo          ./cmd/cairo
-	go build -o ./bin/cairo-registry ./cmd/cairo-registry
-	go build -o ./bin/cairo-ctl      ./cmd/cairo-ctl
+	bash scripts/build.sh
 
 install: build
 	@if [ -w "$(SYSTEM_BIN_DIR)" ]; then \
@@ -27,6 +24,9 @@ install: build
 		sudo install -m 0755 ./bin/cairo-registry "$(SYSTEM_BIN_DIR)/cairo-registry"; \
 		sudo install -m 0755 ./bin/cairo-ctl      "$(SYSTEM_BIN_DIR)/cairo-ctl"; \
 	fi
+
+package:
+	bash scripts/packaging/build-packages.sh
 
 test:
 	go test ./...
