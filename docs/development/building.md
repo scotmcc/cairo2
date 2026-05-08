@@ -1,6 +1,6 @@
 # Building
 
-Cairo is a pure-Go binary with one cgo-free SQLite driver (`modernc.org/sqlite`). No C toolchain is needed for the CLI binary. Node.js is only needed when building the bundled VS Code extension.
+Cairo2 produces three pure-Go binaries from a single cgo-free SQLite driver (`modernc.org/sqlite`). No C toolchain is needed. Node.js is only needed when building bundled packages that include the VS Code extension.
 
 ---
 
@@ -13,39 +13,58 @@ Build is self-contained. Nothing in the build step contacts a network beyond `go
 
 ---
 
-## Targets
+## The three binaries
+
+| Binary | Entry point | Status |
+|---|---|---|
+| `cairo` | `cmd/cairo` | Full TUI + agent loop + subcommands |
+| `cairo-registry` | `cmd/cairo-registry` | Stub — prints `--version` and exits; real implementation pending |
+| `cairo-ctl` | `cmd/cairo-ctl` | Stub — prints `--version` and exits; real implementation pending |
+
+All three are built by every `make build` / `bash scripts/build.sh` invocation and installed together by `make install` / `bash scripts/install.sh`.
+
+---
+
+## Preferred build: scripts/build.sh
 
 ```bash
-make build         # build to ./bin/cairo
-make install       # install cairo to /usr/local/bin/cairo
+bash scripts/build.sh
+```
+
+This is the canonical build path. It stamps the version from `git describe --tags --always --dirty` into all three binaries via `-ldflags "-X main.version=$VERSION"`, then writes the outputs to `./bin/`:
+
+```
+./bin/cairo
+./bin/cairo-registry
+./bin/cairo-ctl
+```
+
+`make build` is a thin wrapper that calls `scripts/build.sh`.
+
+---
+
+## Make targets
+
+```bash
+make build         # build all three binaries to ./bin/  (calls scripts/build.sh)
+make install       # build then install all three to /usr/local/bin/
 make run           # make build then ./bin/cairo
+make test          # go test ./...
+make lint          # go vet ./...
 make clean         # rm ./bin
-```
-
-The Makefile is nine lines. You can read it instead of this page.
-
----
-
-## Equivalent raw `go` commands
-
-If you don't want to use `make`:
-
-```bash
-go build -o ./bin/cairo ./cmd/cairo        # == make build
-bash scripts/install.sh                     # == make install
-```
-
-From outside the repo (once public):
-
-```bash
-go install github.com/scotmcc/cairo2/cmd/cairo@latest
+make package       # build .deb and .rpm packages (calls scripts/packaging/build-packages.sh)
 ```
 
 ---
 
-## Where the binary goes
+## System install
 
-`make install` places the binary at `/usr/local/bin/cairo`, matching the .deb and .rpm packages. Make sure `/usr/local/bin` is on PATH:
+```bash
+bash scripts/install.sh        # preferred — calls build.sh, then installs all three
+make install                   # equivalent
+```
+
+Both place the binaries at `/usr/local/bin/cairo`, `/usr/local/bin/cairo-registry`, and `/usr/local/bin/cairo-ctl`, matching the paths used by the `.deb` and `.rpm` packages. Make sure `/usr/local/bin` is on PATH:
 
 ```bash
 export PATH=$PATH:/usr/local/bin
@@ -53,13 +72,55 @@ export PATH=$PATH:/usr/local/bin
 
 ---
 
+## Packaging
+
+```bash
+make package
+# or
+bash scripts/packaging/build-packages.sh
+```
+
+Produces `.deb` and `.rpm` packages under `build/packages/`. The packages include all three binaries. Flags: `--deb`, `--rpm`, `--version VERSION`, `--skip-extension`, `--skip-tests`.
+
+---
+
+## Equivalent raw `go` commands
+
+If you don't want to use `make` or the scripts (note: raw builds don't stamp the version):
+
+```bash
+go build -o ./bin/cairo          ./cmd/cairo
+go build -o ./bin/cairo-registry ./cmd/cairo-registry
+go build -o ./bin/cairo-ctl      ./cmd/cairo-ctl
+```
+
+From outside the repo (once public):
+
+```bash
+go install github.com/scotmcc/cairo2/cmd/cairo@latest
+go install github.com/scotmcc/cairo2/cmd/cairo-registry@latest
+go install github.com/scotmcc/cairo2/cmd/cairo-ctl@latest
+```
+
+---
+
 ## Build layout
 
 ```
-cmd/cairo/               entrypoint — main.go + bundle.go (subcommands)
+cmd/cairo/               entrypoint — main.go (TUI + subcommands)
+cmd/cairo-registry/      entrypoint — registry server (stub)
+cmd/cairo-ctl/           entrypoint — control CLI (stub)
 internal/agent/          agent loop, event bus, prompt composition
 internal/cli/            line-oriented chat interface + stdout renderer
-internal/store/             SQLite schema, migrations, query helpers
+internal/store/          SQLite schema, migrations, query helpers (split into sub-packages)
+  internal/store/schema/     DDL + migration runner
+  internal/store/sqliteopen/ DB open/seed/wiring
+  internal/store/config/     config queries
+  internal/store/sessions/   session + message queries
+  internal/store/memory/     memory, summary, fact queries
+  internal/store/identity/   role, prompt, skill, tool queries
+  internal/store/jobs/       job, task, worktree queries
+  internal/store/index/      learn/project/file indexing queries
 internal/llm/            Ollama HTTP client + streaming + embeddings
 internal/tools/          every built-in tool
 internal/tui/            Bubble Tea TUI
@@ -101,9 +162,9 @@ The `modernc.org/sqlite` driver should build cleanly on any modern Linux. If you
 
 ## Binary size
 
-The resulting binary is ~25-30MB (Linux amd64, unstripped). Most of the size is `modernc.org/sqlite` (SQLite ported to Go) and the Bubble Tea / lipgloss / termenv stack. Normal for a Go binary with rich TUI + SQLite dependencies.
+The `cairo` binary is ~25-30MB (Linux amd64, unstripped). Most of the size is `modernc.org/sqlite` (SQLite ported to Go) and the Bubble Tea / lipgloss / termenv stack. The stub binaries (`cairo-registry`, `cairo-ctl`) are much smaller — they carry only the version flag handler.
 
-You can shrink it with `-ldflags="-s -w"` if size matters:
+You can shrink with `-ldflags="-s -w"` if size matters:
 
 ```bash
 go build -ldflags="-s -w" -o cairo ./cmd/cairo
@@ -115,7 +176,7 @@ Strips debug symbols and DWARF info. Not recommended for dev builds; fine for di
 
 ## Reproducible builds
 
-Cairo doesn't currently pin Go version via `toolchain` directive in `go.mod`, nor does it use `-trimpath` or `GOTOOLCHAIN=auto` in the Makefile. Reproducible builds across machines need:
+Cairo2 doesn't currently pin Go version via `toolchain` directive in `go.mod`, nor does it use `-trimpath` or `GOTOOLCHAIN=auto` in the Makefile. Reproducible builds across machines need:
 
 ```bash
 go build -trimpath -o cairo ./cmd/cairo

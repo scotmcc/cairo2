@@ -1,6 +1,8 @@
 # Adding a Migration
 
-The DB schema is versioned via a slice of SQL statements in `internal/store/schema.go`. Every new structural change — whether DDL (new table, new column) or DML backfill (new config key, new role tool grant) — belongs here. This guide explains the migration model, numbering conventions, what to put in a migration, and the paired seed requirement.
+> *The store layer was split from `internal/db/` into `internal/store/` sub-packages in Phase 1.3 — see `docs/architecture/decisions.md` D4. This document describes the post-split layout.*
+
+The DB schema is versioned via a slice of SQL statements in `internal/store/schema/schema.go`. Every new structural change — whether DDL (new table, new column) or DML backfill (new config key, new role tool grant) — belongs here. This guide explains the migration model, numbering conventions, what to put in a migration, and the paired seed requirement.
 
 ---
 
@@ -8,15 +10,15 @@ The DB schema is versioned via a slice of SQL statements in `internal/store/sche
 
 ### Where it lives
 
-All migrations are in the `var migrations = []string{...}` slice in `internal/store/schema.go` (line 148). Each entry is a raw SQL string. The slice is ordered — entries must be appended at the end, never inserted in the middle.
+All migrations are in the `var migrations = []string{...}` slice in `internal/store/schema/schema.go` (line 151). Each entry is a raw SQL string. The slice is ordered — entries must be appended at the end, never inserted in the middle.
 
 ### How it runs
 
-`applyMigrations` in `internal/store/db.go` runs on every `OpenAt` call:
+`schema.ApplyMigrations` (in `internal/store/schema/schema.go`) is called by `OpenAt` in `internal/store/sqliteopen/db.go` on every open:
 
 ```go
-// internal/store/db.go:184
-func applyMigrations(sqldb *sql.DB) error {
+// internal/store/schema/schema.go:1863
+func ApplyMigrations(sqldb *sql.DB) error {
     var version int
     if err := sqldb.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
         return fmt.Errorf("read user_version: %w", err)
@@ -145,7 +147,7 @@ Conditional updates avoid overwriting values the user has set. The `WHERE model 
 
 ## 4. Companion Seed Entries
 
-Every migration that adds a config key, role, or prompt part should have a matching entry in `internal/store/seed.go`. This ensures fresh installs get the value without running through migrations (though migrations run on fresh installs too, so technically either path works — the seed is the canonical source of defaults).
+Every migration that adds a config key, role, or prompt part should have a matching entry in `internal/store/sqliteopen/seed.go`. This ensures fresh installs get the value without running through migrations (though migrations run on fresh installs too, so technically either path works — the seed is the canonical source of defaults).
 
 The relationship:
 
@@ -177,14 +179,14 @@ Both use `INSERT OR IGNORE` so the order of execution (seed runs after migration
 
 ### Fresh DB
 
-Any test that calls `db.OpenAt(t.TempDir() + "/test.db")` creates a fresh DB, runs all migrations, then seeds. This is the helper used across the codebase:
+Any test that calls `sqliteopen.OpenAt(t.TempDir() + "/test.db")` creates a fresh DB, runs all migrations, then seeds. The shared helper lives in `internal/store/testing/`:
 
 ```go
-// internal/store/testhelper_test.go:11
-func openTest(t *testing.T) *DB {
+// internal/store/testing/testdb.go:10
+func OpenTestDB(t *testing.T) *sqliteopen.DB {
     t.Helper()
     path := filepath.Join(t.TempDir(), "test.db")
-    database, err := OpenAt(path)
+    database, err := sqliteopen.OpenAt(path)
     if err != nil {
         t.Fatalf("OpenAt: %v", err)
     }
@@ -193,15 +195,15 @@ func openTest(t *testing.T) *DB {
 }
 ```
 
-Use this for any test that needs a DB. It is fully isolated: each test gets its own tempdir, so concurrent tests cannot interfere.
+Import `"github.com/scotmcc/cairo2/internal/store/testing"` (package name `testdb`) and call `testdb.OpenTestDB(t)`. Each call gets its own tempdir, so concurrent tests cannot interfere.
 
 ### Existing DB
 
 To test that a migration correctly upgrades a pre-migration state, you need a DB that was created before your migration. The practical approach in development:
 
-1. Build cairo before your migration and run `cairo` once to produce a `cairo.db`.
+1. Build cairo before your migration and run `cairo` once to produce a `cairo2.db`.
 2. Add your migration.
-3. Run `go run ./cmd/cairo` against the same `cairo.db` — the new migration should apply cleanly without errors.
+3. Run `go run ./cmd/cairo` against the same `cairo2.db` — the new migration should apply cleanly without errors.
 
 Automated regression tests for individual migration steps do not currently exist in the test suite. The `TestDefault_RespectsSeededRoleAllowlists` test in `internal/tools/registry_test.go` is the closest: it opens a fresh DB and checks that every tool name in every seeded role allowlist exists in `Default()`. This catches the common drift between seed and tool name.
 
@@ -223,7 +225,7 @@ Adding a config key to a migration without adding it to `seedConfig()` means the
 
 ### Updating the schema base instead of adding a migration
 
-If you add a new column to the base `schema` constant at the top of `schema.go`, fresh installs get the column but existing DBs do not (because `CREATE TABLE IF NOT EXISTS` skips if the table already exists, and `execSchema` doesn't add new columns to existing tables). Always add new columns via a migration. The base schema is written once; migrations are written forever.
+If you add a new column to the base `schema` constant at the top of `internal/store/schema/schema.go`, fresh installs get the column but existing DBs do not (because `CREATE TABLE IF NOT EXISTS` skips if the table already exists, and `ExecSchema` doesn't add new columns to existing tables). Always add new columns via a migration. The base schema is written once; migrations are written forever.
 
 ### Schema drift between fresh-DB and migrated-DB paths
 
@@ -271,15 +273,15 @@ Three slice entries (three separate migrations in the version counter). The fore
 
 ### The seed pair
 
-v042 adds two tables with no fixed-value rows — there are no seed entries for `projects` or `indexed_files` because the tables start empty. The only seed implication is that the `DB` struct in `db.go` gains two new query-set fields:
+v042 adds two tables with no fixed-value rows — there are no seed entries for `projects` or `indexed_files` because the tables start empty. The only seed implication is that `OpenAt` in `internal/store/sqliteopen/db.go` wires two new query-set fields on the `DB` struct:
 
 ```go
-// internal/store/db.go:37
-db.Projects      = &ProjectQ{db: sqldb}
-db.IndexedFiles  = &IndexedFileQ{db: sqldb}
+// internal/store/sqliteopen/db.go
+db.Projects     = index.NewProjectQ(sqldb)
+db.IndexedFiles = index.NewIndexedFileQ(sqldb)
 ```
 
-These are wired in `OpenAt` after migration runs. No seed rows are needed because the tables are populated at runtime by the `learn` tool.
+These are initialized after migrations run. No seed rows are needed because the tables are populated at runtime by the `learn` tool.
 
 ### The companion tool grant (v044a)
 
@@ -296,7 +298,7 @@ The seed in `seedRoles()` was simultaneously updated so fresh DBs get `learn` in
 
 ### The `DB` struct
 
-`internal/store/db.go` adds `Projects *ProjectQ` and `IndexedFiles *IndexedFileQ` to the `DB` struct. The implementations are in `internal/store/learn.go`. The two-file split (`schema.go` for DDL, `learn.go` for Go query methods) is the standard pattern.
+`internal/store/sqliteopen/db.go` wires `Projects *index.ProjectQ` and `IndexedFiles *index.IndexedFileQ` on the `DB` struct. The query implementations are in `internal/store/index/`. The two-layer split (`internal/store/schema/` for DDL, sub-packages like `index/` for Go query methods) is the standard pattern.
 
 ### What was NOT added
 
