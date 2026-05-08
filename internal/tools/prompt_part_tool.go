@@ -4,14 +4,14 @@ import (
 	"fmt"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // promptPartTool wraps db.PromptQ, giving programmatic access to system prompt parts.
 // Tier 3 — identity-layer tool.
-type promptPartTool struct{ db *db.DB }
+type promptPartTool struct{ db *sqliteopen.DB }
 
-func PromptPartTool(database *db.DB) agent.Tool { return promptPartTool{db: database} }
+func PromptPartTool(database *sqliteopen.DB) agent.Tool { return promptPartTool{db: database} }
 
 func (promptPartTool) Name() string { return "prompt_part" }
 

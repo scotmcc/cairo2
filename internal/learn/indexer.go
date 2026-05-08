@@ -11,14 +11,16 @@ import (
 	"time"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/index"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // Config drives one indexing run. Embed and SummaryModel are mandatory;
 // everything else has sensible defaults.
 type Config struct {
-	DB           *db.DB
+	DB           *sqliteopen.DB
 	LLM          *llm.Client
 	Project      string // human-friendly project name (PRIMARY KEY in projects)
 	Root         string // absolute path to walk
@@ -144,7 +146,7 @@ func Run(ctx context.Context, cfg Config) (*Stats, error) {
 
 	// Apply the max-chunk-token cap from config, falling back to the package
 	// default (400) when the key is absent or unparseable.
-	if capStr, _ := cfg.DB.Config.Get(db.KeyLearnMaxChunkTokens); capStr != "" {
+	if capStr, _ := cfg.DB.Config.Get(config.KeyLearnMaxChunkTokens); capStr != "" {
 		if n, err := strconv.Atoi(capStr); err == nil && n > 0 {
 			MaxChunkTokens = n
 		}
@@ -281,7 +283,7 @@ func indexOne(ctx context.Context, cfg Config, c Candidate, stats *Stats) error 
 
 	// Write file row without SHA so a chunk failure forces a retry next run
 	// rather than leaving orphaned chunks forever.
-	fileID, err := cfg.DB.IndexedFiles.Upsert(&db.IndexedFile{
+	fileID, err := cfg.DB.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    cfg.Project,
 		RelPath:    c.RelPath,
 		FileType:   c.Type,
@@ -303,7 +305,7 @@ func indexOne(ctx context.Context, cfg Config, c Candidate, stats *Stats) error 
 	}
 
 	// Chunks complete — commit SHA so the next run skips this unchanged file.
-	if _, err := cfg.DB.IndexedFiles.Upsert(&db.IndexedFile{
+	if _, err := cfg.DB.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    cfg.Project,
 		RelPath:    c.RelPath,
 		FileType:   c.Type,

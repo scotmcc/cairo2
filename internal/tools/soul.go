@@ -6,16 +6,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 const soulMaxChars = 300
 
 // soulTool is the consolidated soul tool — replaces soul_get, soul_set.
 // The soul is the AI's self-maintained persona, stored in config.soul_prompt.
-type soulTool struct{ db *db.DB }
+type soulTool struct{ db *sqliteopen.DB }
 
-func Soul(database *db.DB) agent.Tool { return soulTool{db: database} }
+func Soul(database *sqliteopen.DB) agent.Tool { return soulTool{db: database} }
 
 func (soulTool) Name() string { return "soul" }
 func (soulTool) Description() string {

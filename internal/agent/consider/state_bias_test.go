@@ -3,12 +3,12 @@ package consider
 import (
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/identity"
 )
 
-// makeState builds a *db.State with all vars set to the given value.
-func makeState(v float64) *db.State {
-	return &db.State{
+// makeState builds a *identity.State with all vars set to the given value.
+func makeState(v float64) *identity.State {
+	return &identity.State{
 		Confidence:          v,
 		TrustInUser:         v,
 		Warmth:              v,
@@ -19,24 +19,24 @@ func makeState(v float64) *db.State {
 	}
 }
 
-// makeStateWith builds a *db.State with individual overrides for named vars.
-func makeStateWith(defaults float64, overrides map[string]float64) *db.State {
+// makeStateWith builds a *identity.State with individual overrides for named vars.
+func makeStateWith(defaults float64, overrides map[string]float64) *identity.State {
 	s := makeState(defaults)
 	for k, v := range overrides {
 		switch k {
-		case db.StateVarConfidence:
+		case identity.StateVarConfidence:
 			s.Confidence = v
-		case db.StateVarTrustInUser:
+		case identity.StateVarTrustInUser:
 			s.TrustInUser = v
-		case db.StateVarWarmth:
+		case identity.StateVarWarmth:
 			s.Warmth = v
-		case db.StateVarFrustrationBaseline:
+		case identity.StateVarFrustrationBaseline:
 			s.FrustrationBaseline = v
-		case db.StateVarSenseOfAgency:
+		case identity.StateVarSenseOfAgency:
 			s.SenseOfAgency = v
-		case db.StateVarAttunement:
+		case identity.StateVarAttunement:
 			s.Attunement = v
-		case db.StateVarGroundedness:
+		case identity.StateVarGroundedness:
 			s.Groundedness = v
 		}
 	}
@@ -58,7 +58,7 @@ func TestApplyStateBias(t *testing.T) {
 		name       string
 		aspect     string
 		raw        float64
-		state      *db.State
+		state      *identity.State
 		wantApprox float64
 		wantExact  bool // when true, result must equal wantApprox exactly
 	}{
@@ -95,7 +95,7 @@ func TestApplyStateBias(t *testing.T) {
 			aspect: "Joy",
 			raw:    0.7,
 			state: makeStateWith(0.5, map[string]float64{
-				db.StateVarGroundedness: 0.8,
+				identity.StateVarGroundedness: 0.8,
 			}),
 			wantApprox: 0.73,
 		},
@@ -107,7 +107,7 @@ func TestApplyStateBias(t *testing.T) {
 			aspect: "Joy",
 			raw:    0.7,
 			state: makeStateWith(0.5, map[string]float64{
-				db.StateVarGroundedness: 0.2,
+				identity.StateVarGroundedness: 0.2,
 			}),
 			wantApprox: 0.67,
 		},
@@ -132,7 +132,7 @@ func TestApplyStateBias(t *testing.T) {
 			aspect: "Fear",
 			raw:    0.7,
 			state: makeStateWith(0.5, map[string]float64{
-				db.StateVarGroundedness: 0.8,
+				identity.StateVarGroundedness: 0.8,
 			}),
 			wantApprox: 0.67,
 		},
@@ -144,7 +144,7 @@ func TestApplyStateBias(t *testing.T) {
 			aspect: "Joy",
 			raw:    0.7,
 			state: makeStateWith(0.5, map[string]float64{
-				db.StateVarGroundedness: 0.8,
+				identity.StateVarGroundedness: 0.8,
 			}),
 			wantApprox: 0.73, // Joy goes up
 		},
@@ -156,7 +156,7 @@ func TestApplyStateBias(t *testing.T) {
 			aspect: "Sadness",
 			raw:    0.5,
 			state: makeStateWith(0.5, map[string]float64{
-				db.StateVarWarmth: 0.1,
+				identity.StateVarWarmth: 0.1,
 			}),
 			wantApprox: 0.54,
 		},
@@ -168,8 +168,8 @@ func TestApplyStateBias(t *testing.T) {
 			aspect: "Curiosity",
 			raw:    0.7,
 			state: makeStateWith(0.5, map[string]float64{
-				db.StateVarConfidence:    1.0,
-				db.StateVarSenseOfAgency: 1.0,
+				identity.StateVarConfidence:    1.0,
+				identity.StateVarSenseOfAgency: 1.0,
 			}),
 			wantApprox: 0.775,
 		},
@@ -182,8 +182,8 @@ func TestApplyStateBias(t *testing.T) {
 			aspect: "Shadow",
 			raw:    0.5,
 			state: makeStateWith(0.5, map[string]float64{
-				db.StateVarSenseOfAgency: 1.0,
-				db.StateVarTrustInUser:   1.0,
+				identity.StateVarSenseOfAgency: 1.0,
+				identity.StateVarTrustInUser:   1.0,
 			}),
 			wantApprox: 0.425,
 		},
@@ -196,7 +196,7 @@ func TestApplyStateBias(t *testing.T) {
 			aspect: "Trust",
 			raw:    0.1,
 			state: makeStateWith(0.5, map[string]float64{
-				db.StateVarTrustInUser: 0.0,
+				identity.StateVarTrustInUser: 0.0,
 			}),
 			wantApprox: 0.05,
 		},
@@ -250,7 +250,7 @@ func TestApplyStateBias(t *testing.T) {
 // same state var (groundedness), opposite valences → opposite bias directions.
 func TestPairingSemantics(t *testing.T) {
 	highGround := makeStateWith(0.5, map[string]float64{
-		db.StateVarGroundedness: 0.8,
+		identity.StateVarGroundedness: 0.8,
 	})
 	raw := 0.7
 

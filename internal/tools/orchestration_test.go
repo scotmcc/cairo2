@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
-func openOrchTestDB(t *testing.T) *db.DB {
+func openOrchTestDB(t *testing.T) *sqliteopen.DB {
 	t.Helper()
-	database, err := db.OpenAt(filepath.Join(t.TempDir(), "orch_test.db"))
+	database, err := sqliteopen.OpenAt(filepath.Join(t.TempDir(), "orch_test.db"))
 	if err != nil {
-		t.Fatalf("db.OpenAt: %v", err)
+		t.Fatalf("sqliteopen.OpenAt: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
 	return database

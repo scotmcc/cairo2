@@ -10,16 +10,16 @@ import (
 	"time"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // Agent is the consolidated agent tool — replaces agent_spawn, agent_wait,
 // agent_log. Spawn launches a background cairo subprocess against a task
 // (atomic claim, deps enforced). Wait blocks until a task reaches a terminal
 // state. Log reads the task's stdout/stderr capture file.
-type agentTool struct{ db *db.DB }
+type agentTool struct{ db *sqliteopen.DB }
 
-func Agent(database *db.DB) agent.Tool { return agentTool{db: database} }
+func Agent(database *sqliteopen.DB) agent.Tool { return agentTool{db: database} }
 
 func (agentTool) Name() string { return "agent" }
 func (agentTool) Description() string {
@@ -91,7 +91,7 @@ func (t agentTool) doSpawn(args map[string]any) agent.ToolResult {
 		return agent.ToolResult{Content: fmt.Sprintf("error: %v", err), IsError: true}
 	}
 
-	logDir := filepath.Join(db.DefaultDataDir(), "logs")
+	logDir := filepath.Join(sqliteopen.DefaultDataDir(), "logs")
 	os.MkdirAll(logDir, 0755)
 	logPath := filepath.Join(logDir, fmt.Sprintf("task_%d.log", taskID))
 	t.db.Tasks.SetLogPath(taskID, logPath)

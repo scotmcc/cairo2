@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // ValidHookEvents is the canonical list of lifecycle events the hook system
@@ -93,7 +93,7 @@ var regexCache sync.Map // map[string]*regexp.Regexp
 // CAIRO_EVENT and CAIRO_CONTEXT_JSON are always set; any additional key=value
 // pairs in extraEnv are appended on top of the current process environment.
 // Errors are logged but do not abort — hooks are advisory.
-func RunHooks(database *db.DB, event string, target string, extraEnv []string) HookResult {
+func RunHooks(database *sqliteopen.DB, event string, target string, extraEnv []string) HookResult {
 	result := HookResult{Continue: true}
 	hooks, err := database.Hooks.ForEvent(event)
 	if err != nil || len(hooks) == 0 {

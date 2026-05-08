@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/config"
 )
 
 // TestRunLoop_SynthesisNudge verifies that after `nudgeEvery` tool calls,
@@ -30,7 +30,7 @@ func TestRunLoop_SynthesisNudge(t *testing.T) {
 		tools: []Tool{ft},
 	})
 
-	if err := cfg.db.Config.Set(db.KeySynthesisNudge, "2"); err != nil {
+	if err := cfg.db.Config.Set(config.KeySynthesisNudge, "2"); err != nil {
 		t.Fatalf("set nudge threshold: %v", err)
 	}
 

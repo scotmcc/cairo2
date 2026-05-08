@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/sessions"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 const sessionFeedbackSystem = `You are reflecting on a session you just completed with the user. Below is the session context you have access to: summaries written during the session, the most recent turns, and atomic facts the summarizer extracted.
@@ -29,13 +31,13 @@ const recentTurnCount = 6
 // Qualifies when:
 //   - session_feedback_enabled is "true" (default)
 //   - total message count >= session_feedback_min_messages (default 30)
-func RunSessionFeedback(ctx context.Context, database *db.DB, llmClient *llm.Client, sessionID int64) {
-	enabled, _ := database.Config.Get(db.KeySessionFeedbackEnabled)
+func RunSessionFeedback(ctx context.Context, database *sqliteopen.DB, llmClient *llm.Client, sessionID int64) {
+	enabled, _ := database.Config.Get(config.KeySessionFeedbackEnabled)
 	if enabled == "false" {
 		return
 	}
 
-	minMsgs := configIntDefault(database, db.KeySessionFeedbackMinMessages, 30)
+	minMsgs := configIntDefault(database, config.KeySessionFeedbackMinMessages, 30)
 	count, err := database.Messages.CountForSession(sessionID)
 	if err != nil {
 		log.Printf("session_feedback: count messages (session %d): %v", sessionID, err)
@@ -45,7 +47,7 @@ func RunSessionFeedback(ctx context.Context, database *db.DB, llmClient *llm.Cli
 		return
 	}
 
-	model, _ := database.Config.Get(db.KeySummaryModel)
+	model, _ := database.Config.Get(config.KeySummaryModel)
 	if model == "" {
 		model = "ministral-8b:latest"
 	}
@@ -87,7 +89,7 @@ func RunSessionFeedback(ctx context.Context, database *db.DB, llmClient *llm.Cli
 		return
 	}
 
-	embedModel, _ := database.Config.Get(db.KeyEmbedModel)
+	embedModel, _ := database.Config.Get(config.KeyEmbedModel)
 	var embedding []float32
 	if embedModel != "" {
 		embedding, err = llmClient.Embed(ctx, embedModel, text)
@@ -106,7 +108,7 @@ func RunSessionFeedback(ctx context.Context, database *db.DB, llmClient *llm.Cli
 // buildFeedbackContext assembles the user-turn content for the feedback prompt.
 // It combines session summaries (oldest-first), the most recent user/assistant
 // turns, and atomic facts extracted during the session.
-func buildFeedbackContext(database *db.DB, sessionID int64) (string, error) {
+func buildFeedbackContext(database *sqliteopen.DB, sessionID int64) (string, error) {
 	var b strings.Builder
 
 	// Session summaries — oldest first so the narrative reads chronologically.
@@ -134,7 +136,7 @@ func buildFeedbackContext(database *db.DB, sessionID int64) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("fetch messages: %w", err)
 	}
-	var turns []*db.Message
+	var turns []*sessions.Message
 	for _, m := range allMsgs {
 		if m.Role == "user" || (m.Role == "assistant" && m.Content != "") {
 			turns = append(turns, m)

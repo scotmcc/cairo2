@@ -7,17 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/providers"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // openTestDB is a local copy of the db package's test helper, since tests in
 // different packages can't share *_test.go helpers. It returns a fully seeded
 // DB backed by a tempdir file.
-func openTestDB(t *testing.T) *db.DB {
+func openTestDB(t *testing.T) *sqliteopen.DB {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "test.db")
-	d, err := db.OpenAt(path)
+	d, err := sqliteopen.OpenAt(path)
 	if err != nil {
 		t.Fatalf("OpenAt: %v", err)
 	}
@@ -27,7 +27,7 @@ func openTestDB(t *testing.T) *db.DB {
 
 // seedSession creates a session and returns its id. Convenient for tests
 // that need a valid session.ID for summaries or prompt building.
-func seedSession(t *testing.T, d *db.DB) int64 {
+func seedSession(t *testing.T, d *sqliteopen.DB) int64 {
 	t.Helper()
 	s, err := d.Sessions.Create("test", "/tmp", "thinking_partner")
 	if err != nil {

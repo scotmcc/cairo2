@@ -35,7 +35,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // Manager owns worktree operations for a specific repository.
@@ -43,12 +43,12 @@ import (
 // worktree itself). Use NewManager to construct one.
 type Manager struct {
 	repoRoot string
-	database *db.DB
+	database *sqliteopen.DB
 }
 
 // NewManager constructs a Manager for the repository rooted at repoRoot.
 // repoRoot must be the absolute path of the main checkout.
-func NewManager(repoRoot string, database *db.DB) *Manager {
+func NewManager(repoRoot string, database *sqliteopen.DB) *Manager {
 	return &Manager{repoRoot: repoRoot, database: database}
 }
 

@@ -5,14 +5,14 @@ import (
 	"strings"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // configTool wraps the config key-value store, giving programmatic access to settings
 // currently only available via TUI. Tier 3 — identity-layer tool.
-type configTool struct{ db *db.DB }
+type configTool struct{ db *sqliteopen.DB }
 
-func ConfigTool(database *db.DB) agent.Tool { return configTool{db: database} }
+func ConfigTool(database *sqliteopen.DB) agent.Tool { return configTool{db: database} }
 
 func (configTool) Name() string { return "config" }
 

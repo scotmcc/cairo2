@@ -11,7 +11,9 @@ import (
 	"strings"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/memory"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // allowedWriteRoles is the set of roles permitted to write or delete long-term
@@ -25,12 +27,12 @@ var allowedWriteRoles = map[string]bool{
 }
 
 type memoryToolConsolidated struct {
-	db    *db.DB
+	db    *sqliteopen.DB
 	embed *EmbedClient
 }
 
 // MemoryTool returns the consolidated memory_tool.
-func MemoryTool(database *db.DB, embed *EmbedClient) agent.Tool {
+func MemoryTool(database *sqliteopen.DB, embed *EmbedClient) agent.Tool {
 	return memoryToolConsolidated{db: database, embed: embed}
 }
 
@@ -124,7 +126,7 @@ func (t memoryToolConsolidated) doAdd(args map[string]any, ctx *agent.ToolContex
 
 	// Dedup check: compare against top candidates before writing.
 	if embedding != nil && !forceFlag {
-		thresholdStr, _ := t.db.Config.Get(db.KeyMemoryDedupThreshold)
+		thresholdStr, _ := t.db.Config.Get(config.KeyMemoryDedupThreshold)
 		threshold := 0.85
 		if thresholdStr != "" {
 			if v, err := strconv.ParseFloat(thresholdStr, 64); err == nil {
@@ -133,7 +135,7 @@ func (t memoryToolConsolidated) doAdd(args map[string]any, ctx *agent.ToolContex
 		}
 		candidates, _ := t.db.Memories.Search(embedding, embedModel, 5)
 		for _, c := range candidates {
-			sim := db.Cosine(embedding, c.Embedding)
+			sim := memory.Cosine(embedding, c.Embedding)
 			if float64(sim) > threshold {
 				return agent.ToolResult{Content: fmt.Sprintf(
 					"near-duplicate found (id: %d, similarity: %.2f): %s\nUse memory_tool(action=\"search\") to review before adding. Pass force=true to override.",
@@ -355,7 +357,7 @@ func (t memoryToolConsolidated) doSearch(args map[string]any) agent.ToolResult {
 }
 
 func (t memoryToolConsolidated) searchMemories(query string, vec []float32, mode string, limit int) ([]memoryResult, error) {
-	var rows []*db.Memory
+	var rows []*memory.Memory
 	switch mode {
 	case "exact":
 		var err error

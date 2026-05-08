@@ -9,8 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/memory"
+	"github.com/scotmcc/cairo2/internal/store/sessions"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // dreamerSystemPrompt is the system message for the dreamer narrative call.
@@ -50,8 +53,8 @@ Rules:
 //
 // Errors fail-soft: log to stderr, leave the row with its current values.
 // The dreams row narrative_path stays as "<pending>" if the dreamer fails.
-func RunDreamer(ctx context.Context, database *db.DB, dreamID int64, sessionIDs []int64, ritualSummary string, llmClient *llm.Client) error {
-	model, err := db.ResolveModel(database, db.RoleDream, "qwen3.6:35b-a3b-mlx-bf16")
+func RunDreamer(ctx context.Context, database *sqliteopen.DB, dreamID int64, sessionIDs []int64, ritualSummary string, llmClient *llm.Client) error {
+	model, err := sqliteopen.ResolveModel(database, identity.RoleDream, "qwen3.6:35b-a3b-mlx-bf16")
 	if err != nil {
 		return fmt.Errorf("dreamer: resolve model: %w", err)
 	}
@@ -83,7 +86,7 @@ func RunDreamer(ctx context.Context, database *db.DB, dreamID int64, sessionIDs 
 		return fmt.Errorf("dreamer: llm call: %w", err)
 	}
 
-	dreamsDir := filepath.Join(db.DefaultDataDir(), "dreams")
+	dreamsDir := filepath.Join(sqliteopen.DefaultDataDir(), "dreams")
 	if err := os.MkdirAll(dreamsDir, 0o755); err != nil {
 		return fmt.Errorf("dreamer: create dreams dir: %w", err)
 	}
@@ -104,7 +107,7 @@ func RunDreamer(ctx context.Context, database *db.DB, dreamID int64, sessionIDs 
 
 // buildDreamLogSummary formats dream_log entries into a readable bullet list
 // for the LLM prompt. Returns an empty string when there are no entries.
-func buildDreamLogSummary(entries []*db.DreamLogEntry) string {
+func buildDreamLogSummary(entries []*memory.DreamLogEntry) string {
 	if len(entries) == 0 {
 		return "(no dream-pass actions recorded)"
 	}
@@ -121,7 +124,7 @@ func buildDreamLogSummary(entries []*db.DreamLogEntry) string {
 
 // buildDreamerTranscript formats the last N messages for the LLM prompt.
 // Caps at 40 messages to keep the context window reasonable.
-func buildDreamerTranscript(msgs []*db.Message) string {
+func buildDreamerTranscript(msgs []*sessions.Message) string {
 	const maxMessages = 40
 	if len(msgs) > maxMessages {
 		msgs = msgs[len(msgs)-maxMessages:]

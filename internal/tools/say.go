@@ -14,12 +14,13 @@ import (
 	"time"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
-type sayTool struct{ db *db.DB }
+type sayTool struct{ db *sqliteopen.DB }
 
-func Say(database *db.DB) agent.Tool { return sayTool{db: database} }
+func Say(database *sqliteopen.DB) agent.Tool { return sayTool{db: database} }
 
 func (sayTool) Name() string { return "say" }
 
@@ -49,7 +50,7 @@ func (t sayTool) Execute(args map[string]any, tc *agent.ToolContext) agent.ToolR
 		return agent.ToolResult{Content: "error: text is required", IsError: true}
 	}
 
-	kokoroURL, _ := t.db.Config.Get(db.KeyKokoroURL)
+	kokoroURL, _ := t.db.Config.Get(config.KeyKokoroURL)
 	if kokoroURL == "" {
 		fmt.Fprintln(os.Stderr, "say: kokoro_url not configured; refusing to no-op silently")
 		return agent.ToolResult{
@@ -62,7 +63,7 @@ func (t sayTool) Execute(args map[string]any, tc *agent.ToolContext) agent.ToolR
 	// Voice: per-call override > config > default
 	voice := strArg(args, "voice")
 	if voice == "" {
-		voice, _ = t.db.Config.Get(db.KeyKokoroVoice)
+		voice, _ = t.db.Config.Get(config.KeyKokoroVoice)
 	}
 	if voice == "" {
 		voice = "af_heart(8)+af_nicole(2)"

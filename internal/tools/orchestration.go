@@ -5,7 +5,9 @@ import (
 	"strings"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/jobs"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // orchestration.go — consolidated job and task tools.
@@ -14,9 +16,9 @@ import (
 
 // --- job ---
 
-type jobTool struct{ db *db.DB }
+type jobTool struct{ db *sqliteopen.DB }
 
-func Job(database *db.DB) agent.Tool { return jobTool{db: database} }
+func Job(database *sqliteopen.DB) agent.Tool { return jobTool{db: database} }
 
 func (jobTool) Name() string { return "job" }
 func (jobTool) Description() string {
@@ -84,7 +86,7 @@ func (t jobTool) doCreate(args map[string]any, ctx *agent.ToolContext) agent.Too
 	}
 	role := strArg(args, "orchestrator_role")
 	if role == "" {
-		role = db.RoleOrchestrator
+		role = identity.RoleOrchestrator
 	}
 	var sessionID *int64
 	if ctx != nil && ctx.Session != nil {
@@ -102,7 +104,7 @@ func (t jobTool) doCreate(args map[string]any, ctx *agent.ToolContext) agent.Too
 		parentMsgPtr = &pmid
 	}
 
-	var j *db.Job
+	var j *jobs.Job
 	var err error
 	if briefingPtr != nil || parentMsgPtr != nil {
 		j, err = t.db.Jobs.CreateWithBriefing(title, description, role, sessionID, briefingPtr, parentMsgPtr)
@@ -189,9 +191,9 @@ func (t jobTool) doReconcile(args map[string]any) agent.ToolResult {
 
 // --- task ---
 
-type taskTool struct{ db *db.DB }
+type taskTool struct{ db *sqliteopen.DB }
 
-func Task(database *db.DB) agent.Tool { return taskTool{db: database} }
+func Task(database *sqliteopen.DB) agent.Tool { return taskTool{db: database} }
 
 func (taskTool) Name() string { return "task" }
 func (taskTool) Description() string {
@@ -263,7 +265,7 @@ func (t taskTool) doCreate(args map[string]any) agent.ToolResult {
 	}
 	role := strArg(args, "assigned_role")
 	if role == "" {
-		role = db.RoleCoder
+		role = identity.RoleCoder
 	}
 	dependsOn := strArg(args, "depends_on")
 	if dependsOn == "" {

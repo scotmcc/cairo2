@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // TestConsiderInput_NoAspectsShortCircuits verifies that ConsiderInput returns
@@ -55,10 +55,10 @@ func TestConsiderInput_NoAspectsShortCircuits(t *testing.T) {
 
 // openConsiderTestDB opens a test DB. Uses OpenAt directly because the agent
 // package can't import the db package's test helper.
-func openConsiderTestDB(t *testing.T) *db.DB {
+func openConsiderTestDB(t *testing.T) *sqliteopen.DB {
 	t.Helper()
 	path := t.TempDir() + "/test.db"
-	d, err := db.OpenAt(path)
+	d, err := sqliteopen.OpenAt(path)
 	if err != nil {
 		t.Fatalf("OpenAt: %v", err)
 	}

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/identity"
 )
 
 // bandTest is a single assertion for a phrase function.
@@ -143,7 +143,7 @@ func TestBuildFeltGroundLine_NilState(t *testing.T) {
 func TestBuildFeltGroundLine_ExampleValues(t *testing.T) {
 	// Reference values from the brief: warmth=0.7, trust=0.6, attunement=0.5,
 	// frust=0.3, conf=0.55, agency=0.5, grounded=0.62.
-	s := &db.State{
+	s := &identity.State{
 		Warmth:              0.7,
 		TrustInUser:         0.6,
 		Attunement:          0.5,

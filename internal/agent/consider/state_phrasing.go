@@ -1,6 +1,6 @@
 package consider
 
-import "github.com/scotmcc/cairo2/internal/db"
+import "github.com/scotmcc/cairo2/internal/store/identity"
 
 // phraseBand maps an upper-inclusive threshold to a qualitative phrase.
 // Bands are checked in order; the first where v <= HighInclusive wins.
@@ -101,7 +101,7 @@ func GroundednessPhrase(v float64) string { return pickPhrase(v, groundednessBan
 // Relational vars (warmth, trust, attunement) are grouped together; self vars
 // (confidence, agency, groundedness) follow; frustration baseline stands alone
 // as a throughline note rather than a relational or self quality.
-func BuildFeltGroundLine(s *db.State) string {
+func BuildFeltGroundLine(s *identity.State) string {
 	if s == nil {
 		return "Your felt ground is unknown — no state available."
 	}

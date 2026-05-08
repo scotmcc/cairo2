@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // memoryRatingPrompt is adapted from Cursor's Memory Prompt rubric (Memory Prompt.txt).
@@ -117,7 +118,7 @@ func parseScore(response string) (float64, error) {
 
 // RunRater finds importance=0 memories and scores them via LLM.
 // Errors are logged to stderr and do not abort the dream.
-func RunRater(ctx context.Context, database *db.DB, llmClient *llm.Client) error {
+func RunRater(ctx context.Context, database *sqliteopen.DB, llmClient *llm.Client) error {
 	unrated, err := database.Memories.Unrated(50)
 	if err != nil {
 		return fmt.Errorf("rater: fetch unrated: %w", err)
@@ -126,7 +127,7 @@ func RunRater(ctx context.Context, database *db.DB, llmClient *llm.Client) error
 		return nil
 	}
 
-	model, err := db.ResolveModel(database, db.RoleDream, "qwen3.6:35b-a3b-mlx-bf16")
+	model, err := sqliteopen.ResolveModel(database, identity.RoleDream, "qwen3.6:35b-a3b-mlx-bf16")
 	if err != nil {
 		return fmt.Errorf("rater: resolve model: %w", err)
 	}

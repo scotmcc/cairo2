@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/identity"
 )
 
 // namedAspectThreshold is the minimum alignment score for an aspect to appear
@@ -23,8 +23,8 @@ const namedAspectThoughtMax = 200
 // activations. Aspects below namedAspectThreshold are dropped; survivors are
 // sorted by alignment desc and each thought is truncated to
 // namedAspectThoughtMax chars. Returns "" when nothing survives the filter.
-func formatNamedAspects(acts []db.ConsiderActivation) string {
-	filtered := make([]db.ConsiderActivation, 0, len(acts))
+func formatNamedAspects(acts []identity.ConsiderActivation) string {
+	filtered := make([]identity.ConsiderActivation, 0, len(acts))
 	for _, a := range acts {
 		if a.Alignment >= namedAspectThreshold {
 			filtered = append(filtered, a)

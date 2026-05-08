@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/jobs"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 	"github.com/scotmcc/cairo2/internal/worktree"
 )
 
@@ -52,21 +54,21 @@ func initTestRepo(t *testing.T) (string, string) {
 }
 
 // openMergeJobTestDB opens a temp cairo DB (package-local, avoids collision with registry_test.go's openTestDB).
-func openMergeJobTestDB(t *testing.T) *db.DB {
+func openMergeJobTestDB(t *testing.T) *sqliteopen.DB {
 	t.Helper()
-	database, err := db.OpenAt(filepath.Join(t.TempDir(), "test.db"))
+	database, err := sqliteopen.OpenAt(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
-		t.Fatalf("db.OpenAt: %v", err)
+		t.Fatalf("sqliteopen.OpenAt: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
 	return database
 }
 
 // setupJobAndWorktree creates a job + worktree in the test repo and returns them.
-func setupJobAndWorktree(t *testing.T, database *db.DB, repoRoot string) (*db.Job, *db.Worktree, *worktree.Manager) {
+func setupJobAndWorktree(t *testing.T, database *sqliteopen.DB, repoRoot string) (*jobs.Job, *jobs.Worktree, *worktree.Manager) {
 	t.Helper()
 	m := worktree.NewManager(repoRoot, database)
-	job, err := database.Jobs.Create("test job", "test description", db.RoleOrchestrator, nil)
+	job, err := database.Jobs.Create("test job", "test description", identity.RoleOrchestrator, nil)
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -144,7 +146,7 @@ func TestMergeJob_Approve_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get job: %v", err)
 	}
-	if updated.Status != db.StatusMerged {
+	if updated.Status != jobs.StatusMerged {
 		t.Errorf("job status: want merged, got %s", updated.Status)
 	}
 	if updated.ReviewedAt == nil {
@@ -232,7 +234,7 @@ func TestMergeJob_Approve_ConflictSetsStatusConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get job: %v", err)
 	}
-	if updated.Status != db.StatusConflict {
+	if updated.Status != jobs.StatusConflict {
 		t.Errorf("job status: want conflict, got %s", updated.Status)
 	}
 
@@ -294,7 +296,7 @@ func TestMergeJob_Approve_PushFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get job: %v", err)
 	}
-	if updated.Status != db.StatusMerged {
+	if updated.Status != jobs.StatusMerged {
 		t.Errorf("job status: want merged, got %s", updated.Status)
 	}
 
@@ -346,7 +348,7 @@ func TestMergeJob_Reject_SetsStatusKeepsWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get job: %v", err)
 	}
-	if updated.Status != db.StatusRejected {
+	if updated.Status != jobs.StatusRejected {
 		t.Errorf("job status: want rejected, got %s", updated.Status)
 	}
 	if updated.ReviewedAt == nil {
@@ -370,7 +372,7 @@ func TestMergeJob_Approve_NoWorktree_ReturnsError(t *testing.T) {
 	manager := worktree.NewManager(repoRoot, database)
 
 	// Create a job WITHOUT a worktree (old-style).
-	job, err := database.Jobs.Create("old job", "", db.RoleOrchestrator, nil)
+	job, err := database.Jobs.Create("old job", "", identity.RoleOrchestrator, nil)
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}

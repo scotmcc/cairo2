@@ -3,18 +3,18 @@ package tools
 import (
 	"github.com/scotmcc/cairo2/internal/agent"
 	"github.com/scotmcc/cairo2/internal/agent/consider"
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 type considerTool struct {
-	db  *db.DB
+	db  *sqliteopen.DB
 	llm *llm.Client
 }
 
 // ConsiderTool returns a tool that runs the inner-dialogue (consider) step on demand.
 // Receives database and llmClient at construction — same pattern as Fetch and MemoryTool.
-func ConsiderTool(database *db.DB, llmClient *llm.Client) agent.Tool {
+func ConsiderTool(database *sqliteopen.DB, llmClient *llm.Client) agent.Tool {
 	return considerTool{db: database, llm: llmClient}
 }
 

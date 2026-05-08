@@ -5,17 +5,18 @@ import (
 	"strings"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // skillTool is the consolidated skill tool — replaces skill_list, skill_create,
 // skill_read, skill_update, skill_delete.
 type skillTool struct {
-	db    *db.DB
+	db    *sqliteopen.DB
 	embed *EmbedClient
 }
 
-func Skill(database *db.DB, embed *EmbedClient) agent.Tool {
+func Skill(database *sqliteopen.DB, embed *EmbedClient) agent.Tool {
 	return skillTool{db: database, embed: embed}
 }
 
@@ -269,7 +270,7 @@ func (t skillTool) doSearch(args map[string]any) agent.ToolResult {
 		mode = "semantic"
 	}
 
-	var skills []*db.Skill
+	var skills []*identity.Skill
 
 	switch mode {
 	case "exact":
@@ -283,7 +284,7 @@ func (t skillTool) doSearch(args map[string]any) agent.ToolResult {
 		if err != nil {
 			return agent.ToolResult{Content: "failed to embed query — is the embed model running?", IsError: true}
 		}
-		var semantic []*db.Skill
+		var semantic []*identity.Skill
 		if vec != nil {
 			semantic, err = t.db.Skills.Search(vec, t.embed.Model, limit)
 			if err != nil {

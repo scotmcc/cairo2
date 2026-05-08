@@ -7,8 +7,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/sessions"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // writerSystemPrompt is the system instruction for the writer role's
@@ -68,7 +71,7 @@ var writerSchema = map[string]any{
 //
 // Model note: uses the existing qwen3.6:35b-a3b-mlx-bf16 default (analytical
 // work, no narrative generation needed). No separate config key required.
-func RunWriter(ctx context.Context, database *db.DB, sessionIDs []int64, dreamID int64, llmClient *llm.Client) error {
+func RunWriter(ctx context.Context, database *sqliteopen.DB, sessionIDs []int64, dreamID int64, llmClient *llm.Client) error {
 	msgs, err := database.Messages.UnreviewedForSessions(sessionIDs)
 	if err != nil {
 		return fmt.Errorf("writer: fetch messages: %w", err)
@@ -82,7 +85,7 @@ func RunWriter(ctx context.Context, database *db.DB, sessionIDs []int64, dreamID
 		return nil
 	}
 
-	model, err := db.ResolveModel(database, db.RoleDream, "qwen3.6:35b-a3b-mlx-bf16")
+	model, err := sqliteopen.ResolveModel(database, identity.RoleDream, "qwen3.6:35b-a3b-mlx-bf16")
 	if err != nil {
 		return fmt.Errorf("writer: resolve model: %w", err)
 	}
@@ -104,7 +107,7 @@ func RunWriter(ctx context.Context, database *db.DB, sessionIDs []int64, dreamID
 		return fmt.Errorf("writer: decode response: %w", err)
 	}
 
-	embedModel, _ := database.Config.Get(db.KeyEmbedModel)
+	embedModel, _ := database.Config.Get(config.KeyEmbedModel)
 	for _, content := range resp.Memories {
 		content = strings.TrimSpace(content)
 		if content == "" {
@@ -135,7 +138,7 @@ func RunWriter(ctx context.Context, database *db.DB, sessionIDs []int64, dreamID
 
 // buildWriterTranscript formats messages as a readable transcript for the
 // writer LLM. Each line is prefixed with the role.
-func buildWriterTranscript(msgs []*db.Message) string {
+func buildWriterTranscript(msgs []*sessions.Message) string {
 	var b strings.Builder
 	for _, m := range msgs {
 		role := m.Role

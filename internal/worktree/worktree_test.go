@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // initRepo creates a temporary git repository with an initial commit and
@@ -40,11 +41,11 @@ func initRepo(t *testing.T) string {
 }
 
 // openTestDB opens a temporary cairo DB.
-func openTestDB(t *testing.T) *db.DB {
+func openTestDB(t *testing.T) *sqliteopen.DB {
 	t.Helper()
-	database, err := db.OpenAt(filepath.Join(t.TempDir(), "test.db"))
+	database, err := sqliteopen.OpenAt(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
-		t.Fatalf("db.OpenAt: %v", err)
+		t.Fatalf("sqliteopen.OpenAt: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
 	return database
@@ -131,7 +132,7 @@ func Test_Create_makesWorktreeOnDisk(t *testing.T) {
 
 	// First we need a job row.
 	database := m.database
-	j, err := database.Jobs.Create("test job", "", db.RoleOrchestrator, nil)
+	j, err := database.Jobs.Create("test job", "", identity.RoleOrchestrator, nil)
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -180,7 +181,7 @@ func Test_Create_autoLinksJobWorktreeID(t *testing.T) {
 	m, _ := newTestManager(t)
 	database := m.database
 
-	j, err := database.Jobs.Create("auto-link test", "", db.RoleOrchestrator, nil)
+	j, err := database.Jobs.Create("auto-link test", "", identity.RoleOrchestrator, nil)
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -204,7 +205,7 @@ func Test_Remove_cleansUpDiskAndDB(t *testing.T) {
 	m, _ := newTestManager(t)
 	database := m.database
 
-	j, err := database.Jobs.Create("remove test", "", db.RoleOrchestrator, nil)
+	j, err := database.Jobs.Create("remove test", "", identity.RoleOrchestrator, nil)
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -236,7 +237,7 @@ func Test_WorktreePath_returnsPath(t *testing.T) {
 	m, _ := newTestManager(t)
 	database := m.database
 
-	j, _ := database.Jobs.Create("path test", "", db.RoleOrchestrator, nil)
+	j, _ := database.Jobs.Create("path test", "", identity.RoleOrchestrator, nil)
 	wtID, err := m.Create(j.ID, "## Goal\nTest path.\n", "master")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -258,7 +259,7 @@ func Test_Validate_noEscapeWhenClean(t *testing.T) {
 	m, _ := newTestManager(t)
 	database := m.database
 
-	j, _ := database.Jobs.Create("validate clean", "", db.RoleOrchestrator, nil)
+	j, _ := database.Jobs.Create("validate clean", "", identity.RoleOrchestrator, nil)
 	wtID, err := m.Create(j.ID, "## Goal\nTest clean state.\n", "master")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -277,7 +278,7 @@ func Test_Validate_detectsEscapedFile(t *testing.T) {
 	m, repoRoot := newTestManager(t)
 	database := m.database
 
-	j, _ := database.Jobs.Create("validate escape", "", db.RoleOrchestrator, nil)
+	j, _ := database.Jobs.Create("validate escape", "", identity.RoleOrchestrator, nil)
 	wtID, err := m.Create(j.ID, "## Goal\nTest escape detection.\n", "master")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -312,7 +313,7 @@ func Test_Validate_ignoresFilesInsideWorktree(t *testing.T) {
 	m, _ := newTestManager(t)
 	database := m.database
 
-	j, _ := database.Jobs.Create("validate inside", "", db.RoleOrchestrator, nil)
+	j, _ := database.Jobs.Create("validate inside", "", identity.RoleOrchestrator, nil)
 	wtID, err := m.Create(j.ID, "## Goal\nTest inside detection.\n", "master")
 	if err != nil {
 		t.Fatalf("Create: %v", err)

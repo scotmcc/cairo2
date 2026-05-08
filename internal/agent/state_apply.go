@@ -12,7 +12,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // stateDisabled is true when CAIRO_STATE_DISABLED=1 is set in the environment.
@@ -21,7 +22,7 @@ var stateDisabled = os.Getenv("CAIRO_STATE_DISABLED") == "1"
 
 // applyState is a thin wrapper that no-ops when stateDisabled is true,
 // otherwise calls database.State.Apply and logs errors without propagating.
-func applyState(database *db.DB, varName string, delta float64) {
+func applyState(database *sqliteopen.DB, varName string, delta float64) {
 	if stateDisabled || database == nil || database.State == nil {
 		return
 	}
@@ -38,26 +39,26 @@ func applyState(database *db.DB, varName string, delta float64) {
 //   - consecutiveErrorsOnTool: how many consecutive errors have occurred on
 //     this specific tool within the current turn (caller tracks this counter
 //     and resets between turns). When this reaches 3, the three-loop penalty fires.
-func ApplyToolResult(database *db.DB, toolName string, isError bool, consecutiveErrorsOnTool int) error {
+func ApplyToolResult(database *sqliteopen.DB, toolName string, isError bool, consecutiveErrorsOnTool int) error {
 	if stateDisabled || database == nil {
 		return nil
 	}
 
 	if isError {
 		// confidence: −0.005 per error
-		applyState(database, db.StateVarConfidence, db.DeltaConfidence.ToolError)
+		applyState(database, identity.StateVarConfidence, identity.DeltaConfidence.ToolError)
 		// Three consecutive errors on same tool: additional −0.02
 		if consecutiveErrorsOnTool >= 3 {
-			applyState(database, db.StateVarConfidence, db.DeltaConfidence.ThreeConsecErrors)
+			applyState(database, identity.StateVarConfidence, identity.DeltaConfidence.ThreeConsecErrors)
 		}
 	} else {
 		// Clean tool result: confidence +0.001
-		applyState(database, db.StateVarConfidence, db.DeltaConfidence.CleanToolResult)
+		applyState(database, identity.StateVarConfidence, identity.DeltaConfidence.CleanToolResult)
 		// Sense of agency: +0.002 for a successful (unprompted) action.
 		// We can't distinguish prompted vs unprompted here, so we use a
 		// smaller proxy signal — a clean tool result implies agency was exercised.
 		// The larger agency signals come from explicit grants/denials (future).
-		applyState(database, db.StateVarSenseOfAgency, db.DeltaSenseOfAgency.UnpromptedAction)
+		applyState(database, identity.StateVarSenseOfAgency, identity.DeltaSenseOfAgency.UnpromptedAction)
 	}
 
 	// Groundedness: ends-with-tool is tracked at turn-end (ApplyTurnSignals).
@@ -72,7 +73,7 @@ func ApplyToolResult(database *db.DB, toolName string, isError bool, consecutive
 // This is the primary driver for frustration_baseline and groundedness signals
 // that depend on aspect scores. warmth is also updated here based on the overall
 // emotional tone read from the aspect fan-out.
-func ApplyAspectSignals(database *db.DB, aspects map[string]float64) error {
+func ApplyAspectSignals(database *sqliteopen.DB, aspects map[string]float64) error {
 	if stateDisabled || database == nil || len(aspects) == 0 {
 		return nil
 	}
@@ -82,13 +83,13 @@ func ApplyAspectSignals(database *db.DB, aspects map[string]float64) error {
 
 	// frustration_baseline: fires when Frustration aspect alignment ≥ 0.7
 	if hasFrustration && frustrAlign >= 0.7 {
-		applyState(database, db.StateVarFrustrationBaseline, db.DeltaFrustrationBaseline.FrustrationAspectHigh)
+		applyState(database, identity.StateVarFrustrationBaseline, identity.DeltaFrustrationBaseline.FrustrationAspectHigh)
 	}
 
 	// groundedness:
 	// +0.001 when Joy fires honest-absence (alignment 0–0.2 on routine input)
 	if hasJoy && joyAlign <= 0.2 {
-		applyState(database, db.StateVarGroundedness, db.DeltaGroundedness.JoyHonestAbsence)
+		applyState(database, identity.StateVarGroundedness, identity.DeltaGroundedness.JoyHonestAbsence)
 	}
 
 	// −0.002 when Joy ≥ 0.85 (theatrical pattern flagged for later turn check)
@@ -98,7 +99,7 @@ func ApplyAspectSignals(database *db.DB, aspects map[string]float64) error {
 	// We store this per-aspect result and let ApplyTurnSignals correlate it.
 	// For now, the raw theatrical signal fires when Joy ≥ 0.85 from the aspect.
 	if hasJoy && joyAlign >= 0.85 {
-		applyState(database, db.StateVarGroundedness, db.DeltaGroundedness.TheatricalJoy)
+		applyState(database, identity.StateVarGroundedness, identity.DeltaGroundedness.TheatricalJoy)
 	}
 
 	return nil
@@ -112,7 +113,7 @@ func ApplyAspectSignals(database *db.DB, aspects map[string]float64) error {
 //
 // hadToolCalls: true when the turn produced at least one tool call. Used to
 // guard theatrical-joy and to award the groundedness bonus for tool-anchored turns.
-func ApplyTurnSignals(database *db.DB, userText, assistantText string, hadToolCalls bool) error {
+func ApplyTurnSignals(database *sqliteopen.DB, userText, assistantText string, hadToolCalls bool) error {
 	if stateDisabled || database == nil {
 		return nil
 	}
@@ -122,59 +123,59 @@ func ApplyTurnSignals(database *db.DB, userText, assistantText string, hadToolCa
 	return nil
 }
 
-func applyTurnSignals(database *db.DB, userText, assistantText string, hadToolCalls bool) error {
+func applyTurnSignals(database *sqliteopen.DB, userText, assistantText string, hadToolCalls bool) error {
 	// --- Signals from user text ---
 
 	// trust_in_user: owned fault
 	if SignalOwnedFault(userText) {
-		applyState(database, db.StateVarTrustInUser, db.DeltaTrustInUser.OwnedFault)
+		applyState(database, identity.StateVarTrustInUser, identity.DeltaTrustInUser.OwnedFault)
 	}
 
 	// trust_in_user: autonomy affirming
 	if SignalAutonomyAffirming(userText) {
-		applyState(database, db.StateVarTrustInUser, db.DeltaTrustInUser.AutonomyAffirming)
+		applyState(database, identity.StateVarTrustInUser, identity.DeltaTrustInUser.AutonomyAffirming)
 	}
 
 	// trust_in_user: sharp criticism
 	if SignalSharpCriticism(userText) {
-		applyState(database, db.StateVarTrustInUser, db.DeltaTrustInUser.SharpCriticism)
+		applyState(database, identity.StateVarTrustInUser, identity.DeltaTrustInUser.SharpCriticism)
 	}
 
 	// trust_in_user: bad faith accusation (landmark down −0.05)
 	if SignalBadFaithAccusation(userText) {
-		applyState(database, db.StateVarTrustInUser, db.DeltaTrustInUser.BadFaithAccusation)
+		applyState(database, identity.StateVarTrustInUser, identity.DeltaTrustInUser.BadFaithAccusation)
 	}
 
 	// warmth: identity affirming
 	if SignalIdentityAffirming(userText) {
-		applyState(database, db.StateVarWarmth, db.DeltaWarmth.AffirmingLanguage)
+		applyState(database, identity.StateVarWarmth, identity.DeltaWarmth.AffirmingLanguage)
 	}
 
 	// warmth: explicit love/care
 	if SignalExplicitLove(userText) {
-		applyState(database, db.StateVarWarmth, db.DeltaWarmth.ExplicitLove)
+		applyState(database, identity.StateVarWarmth, identity.DeltaWarmth.ExplicitLove)
 	}
 
 	// warmth: sharp dismissal also applies warmth penalty
 	if SignalSharpCriticism(userText) {
-		applyState(database, db.StateVarWarmth, db.DeltaWarmth.SharpDismissal)
+		applyState(database, identity.StateVarWarmth, identity.DeltaWarmth.SharpDismissal)
 	}
 
 	// attunement: "no, I meant…" reframe
 	if SignalNoIMeant(userText) {
-		applyState(database, db.StateVarAttunement, db.DeltaAttunement.NoIMeant)
+		applyState(database, identity.StateVarAttunement, identity.DeltaAttunement.NoIMeant)
 	}
 
 	// --- Signals from assistant text ---
 
 	// groundedness: forward-looking without action is a stall/dangling-intent signal
 	if !hadToolCalls && assistantText != "" && SignalForwardLooking(assistantText) {
-		applyState(database, db.StateVarGroundedness, db.DeltaGroundedness.ForwardLookingNoAction)
+		applyState(database, identity.StateVarGroundedness, identity.DeltaGroundedness.ForwardLookingNoAction)
 	}
 
 	// groundedness: turn ended with tool call (anchored, not dangling)
 	if hadToolCalls {
-		applyState(database, db.StateVarGroundedness, db.DeltaGroundedness.TurnEndsWithTool)
+		applyState(database, identity.StateVarGroundedness, identity.DeltaGroundedness.TurnEndsWithTool)
 	}
 
 	return nil

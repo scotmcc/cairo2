@@ -8,7 +8,8 @@ import (
 	"strings"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/jobs"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 	"github.com/scotmcc/cairo2/internal/worktree"
 )
 
@@ -24,11 +25,11 @@ import (
 // in her system-prompt context (injected by tui_handlers.go via enqueueUIEvent).
 type mergeJobTool struct {
 	manager *worktree.Manager
-	db      *db.DB
+	db      *sqliteopen.DB
 }
 
 // MergeJob constructs a merge_job tool.
-func MergeJob(m *worktree.Manager, database *db.DB) agent.Tool {
+func MergeJob(m *worktree.Manager, database *sqliteopen.DB) agent.Tool {
 	return mergeJobTool{manager: m, db: database}
 }
 
@@ -139,7 +140,7 @@ func (t mergeJobTool) doApprove(args map[string]any, ctx *agent.ToolContext) age
 }
 
 // verifyCommits checks that the worktree branch has at least one commit ahead of parent.
-func (t mergeJobTool) verifyCommits(jobID int64, wt *db.Worktree) (agent.ToolResult, bool) {
+func (t mergeJobTool) verifyCommits(jobID int64, wt *jobs.Worktree) (agent.ToolResult, bool) {
 	commitLog, _ := runGitOutput(wt.Path, "log", "--oneline", wt.ParentBranch+".."+wt.Branch)
 	if strings.TrimSpace(commitLog) == "" {
 		return agent.ToolResult{
@@ -155,10 +156,10 @@ func (t mergeJobTool) verifyCommits(jobID int64, wt *db.Worktree) (agent.ToolRes
 
 // rebaseOnto rebases the worktree branch onto its parent branch.
 // On failure it aborts the rebase, sets job status=conflict, and returns an error result.
-func (t mergeJobTool) rebaseOnto(jobID int64, wt *db.Worktree, database *db.DB) (agent.ToolResult, bool) {
+func (t mergeJobTool) rebaseOnto(jobID int64, wt *jobs.Worktree, database *sqliteopen.DB) (agent.ToolResult, bool) {
 	if err := runGitIn(wt.Path, "rebase", wt.ParentBranch); err != nil {
 		_ = runGitIn(wt.Path, "rebase", "--abort")
-		_ = database.Jobs.SetStatus(jobID, db.StatusConflict)
+		_ = database.Jobs.SetStatus(jobID, jobs.StatusConflict)
 		return agent.ToolResult{
 			Content: fmt.Sprintf(
 				"conflict: rebase of %s onto %s failed (%v); worktree preserved at %s for inspection; job status set to conflict",
@@ -171,7 +172,7 @@ func (t mergeJobTool) rebaseOnto(jobID int64, wt *db.Worktree, database *db.DB) 
 }
 
 // squashMerge runs git merge --squash in the repo root.
-func (t mergeJobTool) squashMerge(wt *db.Worktree, repoRoot string) (agent.ToolResult, bool) {
+func (t mergeJobTool) squashMerge(wt *jobs.Worktree, repoRoot string) (agent.ToolResult, bool) {
 	if err := runGitIn(repoRoot, "merge", "--squash", wt.Branch); err != nil {
 		return agent.ToolResult{
 			Content: fmt.Sprintf("error: git merge --squash %s: %v", wt.Branch, err),
@@ -182,7 +183,7 @@ func (t mergeJobTool) squashMerge(wt *db.Worktree, repoRoot string) (agent.ToolR
 }
 
 // commitSquash commits the staged squash using the job summary (or title) as the message.
-func (t mergeJobTool) commitSquash(job *db.Job, repoRoot string) (agent.ToolResult, bool) {
+func (t mergeJobTool) commitSquash(job *jobs.Job, repoRoot string) (agent.ToolResult, bool) {
 	commitMsg := job.Title
 	if job.Summary != nil && *job.Summary != "" {
 		commitMsg = *job.Summary
@@ -200,7 +201,7 @@ func (t mergeJobTool) commitSquash(job *db.Job, repoRoot string) (agent.ToolResu
 
 // pushAndFinalize pushes to remote, then removes the worktree and sets job status=merged.
 // On push failure it keeps the worktree, sets push_pending=1, and still marks the job merged.
-func (t mergeJobTool) pushAndFinalize(jobID int64, worktreeID int64, wt *db.Worktree, repoRoot string, database *db.DB, publish func(string)) agent.ToolResult {
+func (t mergeJobTool) pushAndFinalize(jobID int64, worktreeID int64, wt *jobs.Worktree, repoRoot string, database *sqliteopen.DB, publish func(string)) agent.ToolResult {
 	var pushErr error
 	pushCmd := exec.Command("git", "-C", repoRoot, "push")
 	var pushOut bytes.Buffer
@@ -255,7 +256,7 @@ func (t mergeJobTool) pushAndFinalize(jobID int64, worktreeID int64, wt *db.Work
 			"job_id":        jobID,
 			"branch":        wt.Branch,
 			"parent_branch": wt.ParentBranch,
-			"status":        db.StatusMerged,
+			"status":        jobs.StatusMerged,
 		},
 	}
 }
@@ -296,7 +297,7 @@ func (t mergeJobTool) doReject(args map[string]any, ctx *agent.ToolContext) agen
 		Content: fmt.Sprintf("job #%d rejected; %s", jobID, worktreeNote),
 		Details: map[string]any{
 			"job_id": jobID,
-			"status": db.StatusRejected,
+			"status": jobs.StatusRejected,
 		},
 	}
 }

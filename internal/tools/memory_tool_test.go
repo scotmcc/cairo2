@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sessions"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
-func execMemoryTool(t *testing.T, d *db.DB, args map[string]any) agent.ToolResult {
+func execMemoryTool(t *testing.T, d *sqliteopen.DB, args map[string]any) agent.ToolResult {
 	t.Helper()
 	embed := &EmbedClient{Embedder: stubEmbedder{}, Model: "stub-embed-model"}
 	tool := MemoryTool(d, embed)
@@ -288,14 +289,14 @@ func TestMemoryTool_DedupForceOverride(t *testing.T) {
 	}
 }
 
-func execMemoryToolWithRole(t *testing.T, d *db.DB, role string, args map[string]any) agent.ToolResult {
+func execMemoryToolWithRole(t *testing.T, d *sqliteopen.DB, role string, args map[string]any) agent.ToolResult {
 	t.Helper()
 	embed := &EmbedClient{Embedder: stubEmbedder{}, Model: "stub-embed-model"}
 	tool := MemoryTool(d, embed)
 	return tool.Execute(args, &agent.ToolContext{
 		DB:             d,
 		DisciplineMode: agent.DisciplineFull,
-		Session:        &db.Session{Role: role},
+		Session:        &sessions.Session{Role: role},
 	})
 }
 

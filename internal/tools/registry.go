@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // toolTiers maps each built-in tool name to the minimum discipline mode
@@ -79,7 +79,7 @@ func DisciplineRefusal(mode int, toolName, action string) agent.ToolResult {
 //
 // tool_list_builtin is appended last and receives the derived name list so
 // it stays in sync automatically when tools are added or removed above.
-func Default(database *db.DB, embedder Embedder, embedModel string, choiceRequests chan<- ChoiceRequest) []agent.Tool {
+func Default(database *sqliteopen.DB, embedder Embedder, embedModel string, choiceRequests chan<- ChoiceRequest) []agent.Tool {
 	embed := &EmbedClient{Embedder: embedder, Model: embedModel}
 	// Extract the concrete LLM client for tools that need full LLM access
 	// (summarize+embed). The Embedder interface is always *llm.Client in
@@ -140,7 +140,7 @@ func FilterByAllowlist(tools []agent.Tool, allowed []string) []agent.Tool {
 
 // LoadCustom loads enabled custom tools from the DB and returns them as agent.Tools.
 // Each custom tool wraps its implementation script as an executable.
-func LoadCustom(database *db.DB) ([]agent.Tool, error) {
+func LoadCustom(database *sqliteopen.DB) ([]agent.Tool, error) {
 	customs, err := database.Tools.Enabled()
 	if err != nil {
 		return nil, err

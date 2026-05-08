@@ -9,9 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
 	"github.com/scotmcc/cairo2/internal/providers"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/jobs"
+	"github.com/scotmcc/cairo2/internal/store/memory"
+	"github.com/scotmcc/cairo2/internal/store/sessions"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 type agentQueues struct {
@@ -33,10 +37,10 @@ type SummarizerStatus struct {
 
 // Agent is the stateful wrapper around the agent loop.
 type Agent struct {
-	db         *db.DB
+	db         *sqliteopen.DB
 	llm        *llm.Client
 	model      string
-	session    *db.Session
+	session    *sessions.Session
 	tools      []Tool
 	bus        *Bus
 	registry   *providers.Registry
@@ -61,10 +65,10 @@ type Agent struct {
 
 // Config is passed to New.
 type Config struct {
-	DB           *db.DB
+	DB           *sqliteopen.DB
 	LLM          *llm.Client
 	Model        string
-	Session      *db.Session
+	Session      *sessions.Session
 	Tools        []Tool
 	Registry     *providers.Registry // nil falls back to providers.Default()
 	IsBackground bool                // set to true for background task workers
@@ -82,7 +86,7 @@ func New(cfg Config) (*Agent, error) {
 	// Resolve max turns: caller > DB config > default (50).
 	maxTurns := cfg.MaxTurns
 	if maxTurns <= 0 {
-		if s, _ := cfg.DB.Config.Get(db.KeyMaxTurns); s != "" {
+		if s, _ := cfg.DB.Config.Get(config.KeyMaxTurns); s != "" {
 			if n, err := strconv.Atoi(s); err == nil && n > 0 {
 				maxTurns = n
 			}
@@ -141,7 +145,7 @@ func (a *Agent) Tools() []Tool { return a.tools }
 func (a *Agent) Model() string { return a.model }
 
 // Session returns the session this agent is associated with.
-func (a *Agent) Session() *db.Session { return a.session }
+func (a *Agent) Session() *sessions.Session { return a.session }
 
 // History returns a snapshot of the in-memory conversation history that
 // gets sent to Ollama on every turn. Used by the prompt panel to count
@@ -234,7 +238,7 @@ func (a *Agent) PromptWithOpts(ctx context.Context, text string, opts PromptOpts
 		if triggerSource == "" {
 			triggerSource = "tui"
 		}
-		considerEnabled, _ := a.db.Config.Get(db.KeyConsiderEnabled)
+		considerEnabled, _ := a.db.Config.Get(config.KeyConsiderEnabled)
 		// consider.enabled auto-fires only on the interactive TUI path.
 		// CLI one-shot, API, and model-tool entries must opt in explicitly
 		// (`/c ` prefix or model invocation) — otherwise tool-using roles
@@ -335,7 +339,7 @@ func (a *Agent) drainBackgroundInbox() string {
 		}
 		// Reaped tasks have a distinctive result prefix — surface them with
 		// explicit action options so the user knows what to do.
-		isReaped := t.Status == db.StatusFailed && strings.HasPrefix(result, "reaped:")
+		isReaped := t.Status == jobs.StatusFailed && strings.HasPrefix(result, "reaped:")
 		if isReaped {
 			fmt.Fprintf(&b,
 				"- Background task %q (id: %d) failed unexpectedly (process died).\n"+
@@ -398,7 +402,7 @@ func (a *Agent) StartWatcher(ctx context.Context) {
 // completed background tasks. Includes task identity, status, result snippet,
 // and an orientation note for the agent in case it was mid-turn when the
 // notification arrived.
-func formatCompletionSteer(tasks []*db.Task) string {
+func formatCompletionSteer(tasks []*jobs.Task) string {
 	var b strings.Builder
 	b.WriteString("[background task completed]\n")
 	for _, t := range tasks {
@@ -426,7 +430,7 @@ func formatCompletionSteer(tasks []*db.Task) string {
 // needing their own llm.Client handle. Returns an empty slice + error if
 // no embed_model is configured.
 func (a *Agent) Embed(text string) ([]float32, error) {
-	model, _ := a.db.Config.Get(db.KeyEmbedModel)
+	model, _ := a.db.Config.Get(config.KeyEmbedModel)
 	if model == "" {
 		return nil, nil
 	}
@@ -482,14 +486,14 @@ func (a *Agent) buildSystemPrompt() (llm.Message, error) {
 	// Wire fact semantic search only when an embed model is configured.
 	// Background workers skip it (no embed model available in that path).
 	var factSearch FactSearchFn
-	if embedModel, _ := a.db.Config.Get(db.KeyEmbedModel); embedModel != "" {
+	if embedModel, _ := a.db.Config.Get(config.KeyEmbedModel); embedModel != "" {
 		limit := 5
-		if lstr, _ := a.db.Config.Get(db.KeyMemoryLimit); lstr != "" {
+		if lstr, _ := a.db.Config.Get(config.KeyMemoryLimit); lstr != "" {
 			if n, err := strconv.Atoi(lstr); err == nil && n > 0 {
 				limit = n
 			}
 		}
-		factSearch = func(query string) ([]*db.Fact, error) {
+		factSearch = func(query string) ([]*memory.Fact, error) {
 			if query == "" {
 				return nil, nil
 			}

@@ -11,14 +11,14 @@ import (
 	"time"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 type searchTool struct {
-	db *db.DB
+	db *sqliteopen.DB
 }
 
-func Search(database *db.DB) agent.Tool { return searchTool{db: database} }
+func Search(database *sqliteopen.DB) agent.Tool { return searchTool{db: database} }
 
 func (searchTool) Name() string { return "search" }
 func (searchTool) Description() string {

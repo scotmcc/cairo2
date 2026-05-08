@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/config"
 )
 
 // TestSay_LoudFailWhenKokoroURLMissing asserts that the say tool returns an
@@ -15,7 +15,7 @@ func TestSay_LoudFailWhenKokoroURLMissing(t *testing.T) {
 	d := openTestDB(t)
 
 	// Sanity: kokoro_url should be unset on a fresh DB.
-	if v, _ := d.Config.Get(db.KeyKokoroURL); v != "" {
+	if v, _ := d.Config.Get(config.KeyKokoroURL); v != "" {
 		t.Fatalf("expected kokoro_url empty on fresh DB, got %q", v)
 	}
 
@@ -39,7 +39,7 @@ func TestSay_LoudFailWhenKokoroURLMissing(t *testing.T) {
 func TestSay_AcceptsConfiguredURL(t *testing.T) {
 	d := openTestDB(t)
 
-	if err := d.Config.Set(db.KeyKokoroURL, "http://127.0.0.1:1"); err != nil {
+	if err := d.Config.Set(config.KeyKokoroURL, "http://127.0.0.1:1"); err != nil {
 		t.Fatalf("set kokoro_url: %v", err)
 	}
 

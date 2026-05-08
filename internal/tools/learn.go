@@ -9,8 +9,9 @@ import (
 	"strings"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/learn"
+	"github.com/scotmcc/cairo2/internal/store/memory"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // learnTool is the user-facing entry point to the learn-about feature: an
@@ -18,11 +19,11 @@ import (
 // plus summary embeddings. learn is the canonical path for discovering and
 // mapping a project's codebase.
 type learnTool struct {
-	db    *db.DB
+	db    *sqliteopen.DB
 	embed *EmbedClient
 }
 
-func Learn(database *db.DB, embed *EmbedClient) agent.Tool {
+func Learn(database *sqliteopen.DB, embed *EmbedClient) agent.Tool {
 	return learnTool{db: database, embed: embed}
 }
 
@@ -144,7 +145,7 @@ func (t learnTool) doSearch(args map[string]any) agent.ToolResult {
 	// fallback to embed_model). Searching with the prose model would silently
 	// return no results when the two differ, since cross-model rows are
 	// filtered out at scan time.
-	codeModel, err := db.ResolveCodeEmbedModel(t.db)
+	codeModel, err := sqliteopen.ResolveCodeEmbedModel(t.db)
 	if err != nil || codeModel == "" {
 		codeModel = t.embed.Model
 	}
@@ -206,7 +207,7 @@ type learnResult struct {
 // matches the query (case-insensitive), its score is boosted so symbol-name
 // queries surface the named chunk over the file summary that just mentions it.
 // Pass "" to disable the boost.
-func mergeLearnResults(database *db.DB, project, query string, vec []float32, model string, k int) []learnResult {
+func mergeLearnResults(database *sqliteopen.DB, project, query string, vec []float32, model string, k int) []learnResult {
 	var combined []learnResult
 
 	// File-summary results.
@@ -275,11 +276,11 @@ func mergeLearnResults(database *db.DB, project, query string, vec []float32, mo
 	}
 
 	// MMR reranking: diversify results before capping at k.
-	scored := make([]db.ScoredEmbedding, len(combined))
+	scored := make([]memory.ScoredEmbedding, len(combined))
 	for i, r := range combined {
-		scored[i] = db.ScoredEmbedding{Score: r.Score, Embedding: r.Embedding, Index: i}
+		scored[i] = memory.ScoredEmbedding{Score: r.Score, Embedding: r.Embedding, Index: i}
 	}
-	selected := db.MMR(scored, k, 0.7, 0.92)
+	selected := memory.MMR(scored, k, 0.7, 0.92)
 	out := make([]learnResult, len(selected))
 	for i, idx := range selected {
 		out[i] = combined[idx]

@@ -12,13 +12,14 @@ import (
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/learn"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 type fetchTool struct {
-	database  *db.DB
+	database  *sqliteopen.DB
 	llmClient *llm.Client
 	embed     *EmbedClient
 }
@@ -26,7 +27,7 @@ type fetchTool struct {
 // Fetch returns a fetch tool wired to persist and index every page it retrieves.
 // database, llmClient, and embed may be nil — missing deps simply skip the
 // background ingest while the synchronous fetch still succeeds.
-func Fetch(database *db.DB, llmClient *llm.Client, embed *EmbedClient) agent.Tool {
+func Fetch(database *sqliteopen.DB, llmClient *llm.Client, embed *EmbedClient) agent.Tool {
 	return fetchTool{database: database, llmClient: llmClient, embed: embed}
 }
 
@@ -118,7 +119,7 @@ func (t fetchTool) ingestAsync(parentCtx context.Context, rawURL, markdown strin
 		return // missing deps — skip silently
 	}
 
-	summaryModel, _ := t.database.Config.Get(db.KeySummaryModel)
+	summaryModel, _ := t.database.Config.Get(config.KeySummaryModel)
 	if summaryModel == "" {
 		return // no summary model configured — skip
 	}

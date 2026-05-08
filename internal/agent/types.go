@@ -3,9 +3,10 @@ package agent
 import (
 	"context"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
 	"github.com/scotmcc/cairo2/internal/providers"
+	"github.com/scotmcc/cairo2/internal/store/sessions"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // Tool is the interface every built-in and custom tool must satisfy.
@@ -74,10 +75,10 @@ func DisciplineModeName(mode int) string {
 type ToolContext struct {
 	Ctx          context.Context
 	WorkDir      string
-	DB           *db.DB      // keep for now — tools need too many Q-types to decompose fully
-	Config       ConfigStore // db.ConfigQ satisfies this; use for config reads
-	Bus          EventSink   // *Bus satisfies this
-	Session      *db.Session
+	DB           *sqliteopen.DB // keep for now — tools need too many Q-types to decompose fully
+	Config       ConfigStore    // db.ConfigQ satisfies this; use for config reads
+	Bus          EventSink      // *Bus satisfies this
+	Session      *sessions.Session
 	Tools        []Tool
 	Registry     *providers.Registry // may be nil; callers should fall back to providers.Default()
 	IsBackground bool                // true when running as a background task; choose returns error

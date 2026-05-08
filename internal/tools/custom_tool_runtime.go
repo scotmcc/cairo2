@@ -12,7 +12,8 @@ import (
 	"time"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // customTool adapts a db.CustomTool to agent.Tool at runtime.
@@ -25,10 +26,10 @@ type customTool struct {
 	parameters     map[string]any
 	implementation string
 	implType       string
-	db             *db.DB
+	db             *sqliteopen.DB
 }
 
-func newCustomTool(ct *db.CustomTool, database *db.DB) agent.Tool {
+func newCustomTool(ct *identity.CustomTool, database *sqliteopen.DB) agent.Tool {
 	var params map[string]any
 	json.Unmarshal([]byte(ct.Parameters), &params)
 	if params == nil {

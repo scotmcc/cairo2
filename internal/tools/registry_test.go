@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
-func openTestDB(t *testing.T) *db.DB {
+func openTestDB(t *testing.T) *sqliteopen.DB {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "test.db")
-	d, err := db.OpenAt(path)
+	d, err := sqliteopen.OpenAt(path)
 	if err != nil {
 		t.Fatalf("OpenAt: %v", err)
 	}

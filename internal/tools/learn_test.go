@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/index"
 )
 
 // Test_mergeLearnResults_FileOnlyWhenNoChunks verifies that when the chunks
@@ -22,7 +22,7 @@ func Test_mergeLearnResults_FileOnlyWhenNoChunks(t *testing.T) {
 	vecA, _ := embed.Embed(context.Background(), model, "alpha content about authentication")
 	vecB, _ := embed.Embed(context.Background(), model, "beta content about database schema")
 
-	if _, err := database.IndexedFiles.Upsert(&db.IndexedFile{
+	if _, err := database.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    project,
 		RelPath:    "auth.go",
 		FileType:   "go",
@@ -34,7 +34,7 @@ func Test_mergeLearnResults_FileOnlyWhenNoChunks(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Upsert file A: %v", err)
 	}
-	if _, err := database.IndexedFiles.Upsert(&db.IndexedFile{
+	if _, err := database.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    project,
 		RelPath:    "schema.go",
 		FileType:   "go",
@@ -80,7 +80,7 @@ func Test_mergeLearnResults_ChunksSurfaceAboveFileSummaries(t *testing.T) {
 
 	// File A: low-score file summary (short text → small vec component).
 	vecA, _ := embed.Embed(context.Background(), model, "x")
-	fileAID, err := database.IndexedFiles.Upsert(&db.IndexedFile{
+	fileAID, err := database.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    project,
 		RelPath:    "fileA.go",
 		FileType:   "go",
@@ -106,7 +106,7 @@ func Test_mergeLearnResults_ChunksSurfaceAboveFileSummaries(t *testing.T) {
 
 	// File B: also matches the query well.
 	vecB, _ := embed.Embed(context.Background(), model, longText)
-	if _, err := database.IndexedFiles.Upsert(&db.IndexedFile{
+	if _, err := database.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    project,
 		RelPath:    "fileB.go",
 		FileType:   "go",
@@ -154,7 +154,7 @@ func Test_mergeLearnResults_DeduplicatesChunkFile(t *testing.T) {
 
 	text := "some function implementation"
 	vec, _ := embed.Embed(context.Background(), model, text)
-	fileID, err := database.IndexedFiles.Upsert(&db.IndexedFile{
+	fileID, err := database.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    project,
 		RelPath:    "only.go",
 		FileType:   "go",
@@ -210,7 +210,7 @@ func Test_mergeLearnResults_SymbolNameBoost(t *testing.T) {
 	// File summary that out-cosine-scores the chunk on raw vector match.
 	winningText := "long descriptive summary of authentication splitOversizedChunks paths and helpers galore"
 	vecWin, _ := embed.Embed(context.Background(), model, winningText)
-	if _, err := database.IndexedFiles.Upsert(&db.IndexedFile{
+	if _, err := database.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    project,
 		RelPath:    "wins_on_cosine.go",
 		FileType:   "go",
@@ -226,7 +226,7 @@ func Test_mergeLearnResults_SymbolNameBoost(t *testing.T) {
 	// Target file holding a chunk literally named splitOversizedChunks.
 	targetText := "func body split things up"
 	vecTarget, _ := embed.Embed(context.Background(), model, targetText)
-	targetID, err := database.IndexedFiles.Upsert(&db.IndexedFile{
+	targetID, err := database.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    project,
 		RelPath:    "chunk.go",
 		FileType:   "go",

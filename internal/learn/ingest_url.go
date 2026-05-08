@@ -9,7 +9,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/index"
 )
 
 // WebProject is the project name used for all auto-ingested web pages.
@@ -57,7 +57,7 @@ func IngestURL(ctx context.Context, cfg Config, rawURL, content string) error {
 		return fmt.Errorf("embed %s: %w", rawURL, err)
 	}
 
-	if _, err := cfg.DB.IndexedFiles.Upsert(&db.IndexedFile{
+	if _, err := cfg.DB.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    WebProject,
 		RelPath:    rawURL,
 		FileType:   "web",

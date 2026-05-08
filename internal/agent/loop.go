@@ -10,9 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
 	"github.com/scotmcc/cairo2/internal/providers"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/sessions"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // forwardLookingPattern matches assistant text that signals intent to do more
@@ -29,8 +31,8 @@ type loopConfig struct {
 	tools          []Tool
 	llm            *llm.Client
 	bus            *Bus
-	db             *db.DB              // passed to ToolContext for tools that need DB access (e.g. unsafe_mode check)
-	session        *db.Session         // threaded into ToolContext so self-inspection tools can rebuild prompt
+	db             *sqliteopen.DB      // passed to ToolContext for tools that need DB access (e.g. unsafe_mode check)
+	session        *sessions.Session   // threaded into ToolContext so self-inspection tools can rebuild prompt
 	registry       *providers.Registry // threaded into ToolContext for tools that need it
 	persist        func(role, content, toolCallsJSON, toolName, toolID string)
 	persistTool    func(content, toolName, toolID, status string, latencyMs int64)
@@ -115,7 +117,7 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 	// missing so the backstop still fires conservatively.
 	modelCtx := 0
 	if cfg.db != nil {
-		if s, _ := cfg.db.Config.Get(db.KeyModelCtx); s != "" {
+		if s, _ := cfg.db.Config.Get(config.KeyModelCtx); s != "" {
 			if n, err := strconv.Atoi(s); err == nil && n > 0 {
 				modelCtx = n
 			}
@@ -133,7 +135,7 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 	// counts.
 	nudgeEvery := 8
 	if cfg.db != nil {
-		if s, _ := cfg.db.Config.Get(db.KeySynthesisNudge); s != "" {
+		if s, _ := cfg.db.Config.Get(config.KeySynthesisNudge); s != "" {
 			if n, err := strconv.Atoi(s); err == nil {
 				nudgeEvery = n
 			}
@@ -198,11 +200,11 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 		// live config changes (e.g. toggling think) take effect immediately.
 		var chatOpts llm.ChatOptions
 		if cfg.db != nil {
-			budgetStr, _ := cfg.db.Config.Get(db.KeyThinkBudget)
+			budgetStr, _ := cfg.db.Config.Get(config.KeyThinkBudget)
 			if budget, err := strconv.Atoi(budgetStr); err == nil {
 				chatOpts.ThinkBudget = budget
 			}
-			thinkStr, _ := cfg.db.Config.Get(db.KeyThink)
+			thinkStr, _ := cfg.db.Config.Get(config.KeyThink)
 			chatOpts.DisableThinking = isThinkDisabled(thinkStr)
 			// Per-role think override wins over global when set.
 			if cfg.session != nil && cfg.session.Role != "" {

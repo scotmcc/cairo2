@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/learn"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/index"
 )
 
 // stubLLMClient satisfies the llm.Client interface surface used by fetch+learn.
@@ -56,7 +57,7 @@ func TestFetch_TriggersIngest(t *testing.T) {
 	d := openTestDB(t)
 
 	// Set summary_model so ingestAsync proceeds past the early-exit guard.
-	if err := d.Config.Set(db.KeySummaryModel, "stub-summary"); err != nil {
+	if err := d.Config.Set(config.KeySummaryModel, "stub-summary"); err != nil {
 		t.Fatalf("set summary model: %v", err)
 	}
 
@@ -82,7 +83,7 @@ func TestFetch_TriggersIngest(t *testing.T) {
 	if err := d.Projects.Upsert(learn.WebProject, learn.WebProject, "test"); err != nil {
 		t.Fatalf("upsert project: %v", err)
 	}
-	_, err := d.IndexedFiles.Upsert(&db.IndexedFile{
+	_, err := d.IndexedFiles.Upsert(&index.IndexedFile{
 		Project:    learn.WebProject,
 		RelPath:    srv.URL,
 		FileType:   "web",

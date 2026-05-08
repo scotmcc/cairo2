@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // truncateToolOutput caps tool result content at the configured limit.
 // When truncated, appends a clear notice so the model knows content was cut.
-func truncateToolOutput(database *db.DB, content string) string {
+func truncateToolOutput(database *sqliteopen.DB, content string) string {
 	limit := 65536
 	if database != nil {
-		if limitStr, _ := database.Config.Get(db.KeyToolOutputLimit); limitStr != "" {
+		if limitStr, _ := database.Config.Get(config.KeyToolOutputLimit); limitStr != "" {
 			if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
 				limit = n
 			}

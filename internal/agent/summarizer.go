@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/sessions"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // summaryPrompt is paired with summarySchema via Ollama's structured-output
@@ -73,7 +75,7 @@ type summaryResponse struct {
 // the rest of the queue (the recent tail, including the latest assistant
 // turn) unsummarized so loadHistory can rehydrate real dialogue across
 // process restarts.
-func Summarize(ctx context.Context, database *db.DB, llmClient *llm.Client, sessionID int64, trigger string) error {
+func Summarize(ctx context.Context, database *sqliteopen.DB, llmClient *llm.Client, sessionID int64, trigger string) error {
 	return summarizeImpl(ctx, database, llmClient, sessionID, false, trigger)
 }
 
@@ -83,20 +85,20 @@ func Summarize(ctx context.Context, database *db.DB, llmClient *llm.Client, sess
 // with too few turns to safely fold still no-ops. Used by the dream
 // pre-flight drain so small backlogs that the per-turn path would skip
 // indefinitely still get consolidated during nightly maintenance.
-func SummarizeForce(ctx context.Context, database *db.DB, llmClient *llm.Client, sessionID int64, trigger string) error {
+func SummarizeForce(ctx context.Context, database *sqliteopen.DB, llmClient *llm.Client, sessionID int64, trigger string) error {
 	return summarizeImpl(ctx, database, llmClient, sessionID, true, trigger)
 }
 
-func summarizeImpl(ctx context.Context, database *db.DB, llmClient *llm.Client, sessionID int64, force bool, trigger string) error {
+func summarizeImpl(ctx context.Context, database *sqliteopen.DB, llmClient *llm.Client, sessionID int64, force bool, trigger string) error {
 	// load config
-	model, _ := database.Config.Get(db.KeySummaryModel)
+	model, _ := database.Config.Get(config.KeySummaryModel)
 	if model == "" {
 		model = "ministral-8b:latest"
 	}
-	threshold := configIntDefault(database, db.KeySummaryThreshold, 8)
-	tokenThreshold := configIntDefault(database, db.KeySummaryTokenThreshold, 8000)
-	batchSize := configIntDefault(database, db.KeySummaryBatchSize, 4)
-	embedModel, _ := database.Config.Get(db.KeyEmbedModel)
+	threshold := configIntDefault(database, config.KeySummaryThreshold, 8)
+	tokenThreshold := configIntDefault(database, config.KeySummaryTokenThreshold, 8000)
+	batchSize := configIntDefault(database, config.KeySummaryBatchSize, 4)
+	embedModel, _ := database.Config.Get(config.KeyEmbedModel)
 
 	count, err := database.Messages.CountUnsummarized(sessionID)
 	if err != nil {
@@ -285,7 +287,7 @@ func summarizeImpl(ctx context.Context, database *db.DB, llmClient *llm.Client, 
 // 10 iterations to keep cost predictable when called during interactive
 // startup (resolveSession). Honors ctx cancellation between batches and
 // inside each batch's LLM call.
-func SummarizeAll(ctx context.Context, database *db.DB, llmClient *llm.Client, sessionID int64, trigger string) {
+func SummarizeAll(ctx context.Context, database *sqliteopen.DB, llmClient *llm.Client, sessionID int64, trigger string) {
 	summarizeAllImpl(ctx, database, llmClient, sessionID, false, 10, trigger)
 }
 
@@ -297,11 +299,11 @@ func SummarizeAll(ctx context.Context, database *db.DB, llmClient *llm.Client, s
 // invariant is the safeguard against runaway), so a long session with
 // hundreds of unsummarized turns drains in one pass instead of needing
 // multiple dream cycles.
-func SummarizeAllForce(ctx context.Context, database *db.DB, llmClient *llm.Client, sessionID int64, trigger string) {
+func SummarizeAllForce(ctx context.Context, database *sqliteopen.DB, llmClient *llm.Client, sessionID int64, trigger string) {
 	summarizeAllImpl(ctx, database, llmClient, sessionID, true, 0, trigger)
 }
 
-func summarizeAllImpl(ctx context.Context, database *db.DB, llmClient *llm.Client, sessionID int64, force bool, maxIter int, trigger string) {
+func summarizeAllImpl(ctx context.Context, database *sqliteopen.DB, llmClient *llm.Client, sessionID int64, force bool, maxIter int, trigger string) {
 	for i := 0; maxIter == 0 || i < maxIter; i++ {
 		if ctx.Err() != nil {
 			return
@@ -422,7 +424,7 @@ func parseSummaryJSON(raw string) (summary string, facts []string, ok bool) {
 //     a still-active session's most recent turn into a summary.
 //   - lastID = boundaryTurn.id - 1 — sweep every message before the
 //     boundary, including any tool rows that trail the batchSize-th turn.
-func selectSummarizeRange(count, trigger, batchSize int, turns []*db.Message, force bool) (firstID, lastID int64, fire bool) {
+func selectSummarizeRange(count, trigger, batchSize int, turns []*sessions.Message, force bool) (firstID, lastID int64, fire bool) {
 	if batchSize <= 0 {
 		return 0, 0, false
 	}
@@ -447,7 +449,7 @@ func selectSummarizeRange(count, trigger, batchSize int, turns []*db.Message, fo
 // non-numeric, or non-positive. Used by the summarizer for trigger and batch
 // sizing so a typo in a config row can't disable summarization or push it
 // into a runaway batch.
-func configIntDefault(database *db.DB, key string, fallback int) int {
+func configIntDefault(database *sqliteopen.DB, key string, fallback int) int {
 	raw, _ := database.Config.Get(key)
 	if raw == "" {
 		return fallback

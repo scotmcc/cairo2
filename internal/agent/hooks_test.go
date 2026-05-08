@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // addHook inserts an enabled hook for event+command and returns its ID.
-func addHook(t *testing.T, database *db.DB, event, command string) int64 {
+func addHook(t *testing.T, database *sqliteopen.DB, event, command string) int64 {
 	t.Helper()
 	h, err := database.Hooks.Add(event, command)
 	if err != nil {
@@ -21,7 +21,7 @@ func addHook(t *testing.T, database *db.DB, event, command string) int64 {
 }
 
 // setHookMatcher updates the matcher column for an existing hook.
-func setHookMatcher(t *testing.T, database *db.DB, hookID int64, matcher string) {
+func setHookMatcher(t *testing.T, database *sqliteopen.DB, hookID int64, matcher string) {
 	t.Helper()
 	if err := database.WithTx(func(tx *sql.Tx) error {
 		_, err := tx.Exec(`UPDATE hooks SET matcher = ? WHERE id = ?`, matcher, hookID)

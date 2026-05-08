@@ -32,8 +32,8 @@ import (
 	"log"
 
 	"github.com/scotmcc/cairo2/internal/agent/consider"
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // ConsiderInput runs the consider step and persists every side effect a
@@ -47,7 +47,7 @@ import (
 // responsible for attaching the result later.
 func ConsiderInput(
 	ctx context.Context,
-	database *db.DB,
+	database *sqliteopen.DB,
 	llmClient *llm.Client,
 	pub consider.EventPublisher,
 	sessionID int64,

@@ -4,16 +4,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/sessions"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // turnRows builds a slice of *db.Message with sequential ids so the queue
 // helpers can be exercised without touching SQLite. Only the ID field is
 // material — selectSummarizeRange does not look at content.
-func turnRows(ids ...int64) []*db.Message {
-	out := make([]*db.Message, len(ids))
+func turnRows(ids ...int64) []*sessions.Message {
+	out := make([]*sessions.Message, len(ids))
 	for i, id := range ids {
-		out[i] = &db.Message{ID: id, Role: "user"}
+		out[i] = &sessions.Message{ID: id, Role: "user"}
 	}
 	return out
 }
@@ -130,16 +132,16 @@ func TestSelectSummarizeRange_SteadyStateOscillation(t *testing.T) {
 
 	count := 0
 	nextID := int64(1)
-	queue := []*db.Message{}
+	queue := []*sessions.Message{}
 
 	add := func() {
-		queue = append(queue, &db.Message{ID: nextID, Role: "user"})
+		queue = append(queue, &sessions.Message{ID: nextID, Role: "user"})
 		nextID++
 		count++
 	}
 	tryFire := func() {
 		// emulate `OldestUnsummarized(batch+1)` — we pass exactly that prefix
-		var oldestSlice []*db.Message
+		var oldestSlice []*sessions.Message
 		if len(queue) > batch {
 			oldestSlice = queue[:batch+1]
 		} else {
@@ -348,7 +350,7 @@ text path wins when JSON is absent
 
 // addTestMessages inserts n user messages each with the given content into a
 // session. Used to drive the token-pressure trigger tests without real LLM calls.
-func addTestMessages(t *testing.T, d *db.DB, sessionID int64, n int, content string) {
+func addTestMessages(t *testing.T, d *sqliteopen.DB, sessionID int64, n int, content string) {
 	t.Helper()
 	for i := 0; i < n; i++ {
 		if _, err := d.Messages.Add(sessionID, "user", content, "", "", ""); err != nil {
@@ -368,7 +370,7 @@ func addTestMessages(t *testing.T, d *db.DB, sessionID int64, n int, content str
 func TestSummarizer_TokenPressureTrigger_UnderTurnOverTokenFires(t *testing.T) {
 	d := openTestDB(t)
 	// Set a low token threshold so a few messages exceed it.
-	if err := d.Config.Set(db.KeySummaryTokenThreshold, "100"); err != nil {
+	if err := d.Config.Set(config.KeySummaryTokenThreshold, "100"); err != nil {
 		t.Fatalf("set token threshold: %v", err)
 	}
 
@@ -394,9 +396,9 @@ func TestSummarizer_TokenPressureTrigger_UnderTurnOverTokenFires(t *testing.T) {
 	}
 
 	// Replicate the trigger logic from Summarize to verify the token path fires.
-	trigger := configIntDefault(d, db.KeySummaryThreshold, 8)
-	tokenThreshold := configIntDefault(d, db.KeySummaryTokenThreshold, 8000)
-	batchSize := configIntDefault(d, db.KeySummaryBatchSize, 4)
+	trigger := configIntDefault(d, config.KeySummaryThreshold, 8)
+	tokenThreshold := configIntDefault(d, config.KeySummaryTokenThreshold, 8000)
+	batchSize := configIntDefault(d, config.KeySummaryBatchSize, 4)
 
 	turns, err := d.Messages.OldestUnsummarized(sid, batchSize+1)
 	if err != nil {
@@ -431,7 +433,7 @@ func TestSummarizer_TokenPressureTrigger_UnderTurnOverTokenFires(t *testing.T) {
 func TestSummarizer_TurnCountTrigger_OverTurnUnderTokenFires(t *testing.T) {
 	d := openTestDB(t)
 	// Set a very high token threshold so the token path cannot fire.
-	if err := d.Config.Set(db.KeySummaryTokenThreshold, "999999"); err != nil {
+	if err := d.Config.Set(config.KeySummaryTokenThreshold, "999999"); err != nil {
 		t.Fatalf("set token threshold: %v", err)
 	}
 
@@ -444,7 +446,7 @@ func TestSummarizer_TurnCountTrigger_OverTurnUnderTokenFires(t *testing.T) {
 		t.Fatalf("count: %v", err)
 	}
 
-	trigger := configIntDefault(d, db.KeySummaryThreshold, 8)
+	trigger := configIntDefault(d, config.KeySummaryThreshold, 8)
 	if count <= trigger {
 		t.Fatalf("precondition: turn count %d must exceed trigger %d", count, trigger)
 	}
@@ -453,12 +455,12 @@ func TestSummarizer_TurnCountTrigger_OverTurnUnderTokenFires(t *testing.T) {
 	if err != nil {
 		t.Fatalf("token estimate: %v", err)
 	}
-	tokenThreshold := configIntDefault(d, db.KeySummaryTokenThreshold, 8000)
+	tokenThreshold := configIntDefault(d, config.KeySummaryTokenThreshold, 8000)
 	if estimatedTokens > tokenThreshold {
 		t.Fatalf("precondition: estimated tokens %d must NOT exceed threshold %d", estimatedTokens, tokenThreshold)
 	}
 
-	batchSize := configIntDefault(d, db.KeySummaryBatchSize, 4)
+	batchSize := configIntDefault(d, config.KeySummaryBatchSize, 4)
 	turns, err := d.Messages.OldestUnsummarized(sid, batchSize+1)
 	if err != nil {
 		t.Fatalf("oldest unsummarized: %v", err)

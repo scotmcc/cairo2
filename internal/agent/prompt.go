@@ -10,9 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
 	"github.com/scotmcc/cairo2/internal/providers"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/memory"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // templateRe matches {{name}} where name is a simple identifier (letters,
@@ -43,7 +46,7 @@ func ApplyTemplates(s string, vars map[string]string) string {
 // FactSearchFn is an optional callback that returns relevant facts given a
 // query string. When non-nil, BuildSystemPrompt calls it with the last user
 // message (or "" if no prior message) to inject a ## Relevant Facts section.
-type FactSearchFn func(query string) ([]*db.Fact, error)
+type FactSearchFn func(query string) ([]*memory.Fact, error)
 
 // BuildSystemPrompt assembles the system prompt fresh from DB state.
 // It is called at the start of every turn so changes (soul updates, new memories,
@@ -66,7 +69,7 @@ type FactSearchFn func(query string) ([]*db.Fact, error)
 // 12. Relevant facts (semantic search, only if factSearch is non-nil)
 // 13. Date + cwd stamp
 // 14. Template substitution ({{key}} → config values)
-func BuildSystemPrompt(ctx context.Context, database *db.DB, sessionID int64, roleName, cwd string, tools []Tool, lastActive time.Time, reg *providers.Registry, factSearch FactSearchFn) (llm.Message, error) {
+func BuildSystemPrompt(ctx context.Context, database *sqliteopen.DB, sessionID int64, roleName, cwd string, tools []Tool, lastActive time.Time, reg *providers.Registry, factSearch FactSearchFn) (llm.Message, error) {
 	var b strings.Builder
 
 	appendUserSteering(&b, database)
@@ -114,7 +117,7 @@ func BuildSystemPrompt(ctx context.Context, database *db.DB, sessionID int64, ro
 // exclusions, and environment context from registered providers. Pass roleName
 // so prompts triggered as not-role:<other-role> can be skipped for the current
 // role; passing "" loads only the unconditional NULL-trigger parts.
-func appendBaseParts(b *strings.Builder, database *db.DB, reg *providers.Registry, cwd, roleName string) error {
+func appendBaseParts(b *strings.Builder, database *sqliteopen.DB, reg *providers.Registry, cwd, roleName string) error {
 	base, err := database.Prompts.Base(roleName)
 	if err != nil {
 		return fmt.Errorf("prompt base: %w", err)
@@ -135,7 +138,7 @@ func appendBaseParts(b *strings.Builder, database *db.DB, reg *providers.Registr
 // appendSoul writes the soul section when configured. The heading explicitly
 // frames this as the AI's own voice so models understand the pronoun shift
 // from second-person base instructions ("you are") to first-person soul ("I am").
-func appendSoul(b *strings.Builder, database *db.DB) error {
+func appendSoul(b *strings.Builder, database *sqliteopen.DB) error {
 	soul, _ := database.Config.Get("soul_prompt")
 	if soul != "" {
 		b.WriteString("## Your character — in your own words\n\n")
@@ -150,8 +153,8 @@ func appendSoul(b *strings.Builder, database *db.DB) error {
 // sections embedded in user messages (the per-turn summary is wrapped into the
 // user message in agent.wrapUserMessage; this section explains how to *use* it).
 // Stable across turns so it doesn't break prefix caching.
-func appendInnerVoiceMeta(b *strings.Builder, database *db.DB) {
-	enabled, _ := database.Config.Get(db.KeyConsiderEnabled)
+func appendInnerVoiceMeta(b *strings.Builder, database *sqliteopen.DB) {
+	enabled, _ := database.Config.Get(config.KeyConsiderEnabled)
 	if enabled != "true" {
 		return
 	}
@@ -162,8 +165,8 @@ func appendInnerVoiceMeta(b *strings.Builder, database *db.DB) {
 // appendUserSteering writes the user-owned ## Steering section when set.
 // Injected at the very top of the prompt so the user's directives frame the
 // whole turn before the AI reads anything else. Skips silently when empty.
-func appendUserSteering(b *strings.Builder, database *db.DB) {
-	v, _ := database.Config.Get(db.KeyUserSteering)
+func appendUserSteering(b *strings.Builder, database *sqliteopen.DB) {
+	v, _ := database.Config.Get(config.KeyUserSteering)
 	if strings.TrimSpace(v) == "" {
 		return
 	}
@@ -201,7 +204,7 @@ func appendOperatingDocs(b *strings.Builder) {
 // codebases / docs are queryable via the learn tool — without this the
 // model has no idea the data exists and reaches for memory/notes first
 // even when learn is the right answer.
-func appendIndexedProjects(b *strings.Builder, database *db.DB) {
+func appendIndexedProjects(b *strings.Builder, database *sqliteopen.DB) {
 	if database == nil || database.Projects == nil {
 		return
 	}
@@ -244,9 +247,9 @@ func firstSentence(s string, maxChars int) string {
 // talking to every turn, not just during /init. Sits right after the soul so
 // the persistent identity pair (who AI is / who user is) reaches the model
 // together, before role/tool situational layers.
-func appendUserContext(b *strings.Builder, database *db.DB) {
-	name, _ := database.Config.Get(db.KeyUserName)
-	ctx, _ := database.Config.Get(db.KeyUserContext)
+func appendUserContext(b *strings.Builder, database *sqliteopen.DB) {
+	name, _ := database.Config.Get(config.KeyUserName)
+	ctx, _ := database.Config.Get(config.KeyUserContext)
 	name = strings.TrimSpace(name)
 	ctx = strings.TrimSpace(ctx)
 	if name == "" && ctx == "" {
@@ -265,7 +268,7 @@ func appendUserContext(b *strings.Builder, database *db.DB) {
 }
 
 // appendRoleAddendum writes prompt parts for the current role trigger.
-func appendRoleAddendum(b *strings.Builder, database *db.DB, roleName string) error {
+func appendRoleAddendum(b *strings.Builder, database *sqliteopen.DB, roleName string) error {
 	if roleName == "" {
 		return nil
 	}
@@ -282,7 +285,7 @@ func appendRoleAddendum(b *strings.Builder, database *db.DB, roleName string) er
 
 // appendToolAddenda writes prompt parts for each active tool (built-in triggers
 // and custom tool prompt_addendum fields).
-func appendToolAddenda(b *strings.Builder, database *db.DB, tools []Tool) error {
+func appendToolAddenda(b *strings.Builder, database *sqliteopen.DB, tools []Tool) error {
 	seen := make(map[string]bool)
 	for _, t := range tools {
 		if seen[t.Name()] {
@@ -316,9 +319,9 @@ func appendToolAddenda(b *strings.Builder, database *db.DB, tools []Tool) error 
 // Surfaces the latest N summaries (default 4) — pairs with the queue-mode
 // summarizer that folds 4 turns at a time, so the prompt always carries
 // roughly the last 16 turns of context as digested narrative.
-func appendSummaries(b *strings.Builder, database *db.DB, sessionID int64) error {
+func appendSummaries(b *strings.Builder, database *sqliteopen.DB, sessionID int64) error {
 	contextCount := 4
-	if cstr, _ := database.Config.Get(db.KeySummaryCtx); cstr != "" {
+	if cstr, _ := database.Config.Get(config.KeySummaryCtx); cstr != "" {
 		if n, err := strconv.Atoi(cstr); err == nil && n > 0 {
 			contextCount = n
 		}
@@ -336,8 +339,8 @@ func appendSummaries(b *strings.Builder, database *db.DB, sessionID int64) error
 // appendMemories writes the ## Memories section for thinking_partner and
 // no-role sessions. For other roles, injects a single-line pointer so the
 // model knows the memory store exists and how to search it.
-func appendMemories(b *strings.Builder, database *db.DB, roleName string) error {
-	injectMemories := roleName == "" || roleName == db.RoleThinkingPartner
+func appendMemories(b *strings.Builder, database *sqliteopen.DB, roleName string) error {
+	injectMemories := roleName == "" || roleName == identity.RoleThinkingPartner
 	if !injectMemories {
 		// Non-interactive roles get a compact pointer so they know the store exists.
 		if total, err := database.Memories.Count(); err == nil && total > 0 {
@@ -347,14 +350,14 @@ func appendMemories(b *strings.Builder, database *db.DB, roleName string) error 
 	}
 
 	configLimit := 15
-	if lstr, _ := database.Config.Get(db.KeyMemoryLimit); lstr != "" {
+	if lstr, _ := database.Config.Get(config.KeyMemoryLimit); lstr != "" {
 		if n, err := strconv.Atoi(lstr); err == nil && n > 0 {
 			configLimit = n
 		}
 	}
 
 	limit := configLimit
-	if ctxStr, _ := database.Config.Get(db.KeyModelCtx); ctxStr != "" {
+	if ctxStr, _ := database.Config.Get(config.KeyModelCtx); ctxStr != "" {
 		if modelCtx, err := strconv.Atoi(ctxStr); err == nil && modelCtx > 0 {
 			fixedSize := b.Len() / 4 // rough token estimate of prompt so far
 			budget := modelCtx / 2   // use at most 50% of context for input
@@ -392,7 +395,7 @@ func appendMemories(b *strings.Builder, database *db.DB, roleName string) error 
 
 // appendFacts writes the ## Relevant Facts section using semantic search.
 // Only runs when factSearch is non-nil.
-func appendFacts(b *strings.Builder, database *db.DB, factSearch FactSearchFn, sessionID int64) error {
+func appendFacts(b *strings.Builder, database *sqliteopen.DB, factSearch FactSearchFn, sessionID int64) error {
 	if factSearch == nil {
 		return nil
 	}

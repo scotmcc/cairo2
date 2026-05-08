@@ -4,12 +4,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // stateDelta calls fn, reads the state before and after, and returns the
 // difference for varName.
-func stateDelta(t *testing.T, database *db.DB, varName string, fn func()) float64 {
+func stateDelta(t *testing.T, database *sqliteopen.DB, varName string, fn func()) float64 {
 	t.Helper()
 	before, err := database.State.Today()
 	if err != nil {
@@ -23,21 +24,21 @@ func stateDelta(t *testing.T, database *db.DB, varName string, fn func()) float6
 	return stateField(after, varName) - stateField(before, varName)
 }
 
-func stateField(s *db.State, varName string) float64 {
+func stateField(s *identity.State, varName string) float64 {
 	switch varName {
-	case db.StateVarConfidence:
+	case identity.StateVarConfidence:
 		return s.Confidence
-	case db.StateVarTrustInUser:
+	case identity.StateVarTrustInUser:
 		return s.TrustInUser
-	case db.StateVarWarmth:
+	case identity.StateVarWarmth:
 		return s.Warmth
-	case db.StateVarFrustrationBaseline:
+	case identity.StateVarFrustrationBaseline:
 		return s.FrustrationBaseline
-	case db.StateVarSenseOfAgency:
+	case identity.StateVarSenseOfAgency:
 		return s.SenseOfAgency
-	case db.StateVarAttunement:
+	case identity.StateVarAttunement:
 		return s.Attunement
-	case db.StateVarGroundedness:
+	case identity.StateVarGroundedness:
 		return s.Groundedness
 	default:
 		return 0
@@ -57,10 +58,10 @@ func approxEqual(a, b, tol float64) bool {
 // confidence by DeltaConfidence.CleanToolResult.
 func TestApplyToolResult_CleanResult(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarConfidence, func() {
+	delta := stateDelta(t, database, identity.StateVarConfidence, func() {
 		ApplyToolResult(database, "bash", false, 0)
 	})
-	want := db.DeltaConfidence.CleanToolResult
+	want := identity.DeltaConfidence.CleanToolResult
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("confidence delta = %.6f, want %.6f", delta, want)
 	}
@@ -69,10 +70,10 @@ func TestApplyToolResult_CleanResult(t *testing.T) {
 // TestApplyToolResult_ErrorResult verifies that a tool error lowers confidence.
 func TestApplyToolResult_ErrorResult(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarConfidence, func() {
+	delta := stateDelta(t, database, identity.StateVarConfidence, func() {
 		ApplyToolResult(database, "bash", true, 1)
 	})
-	want := db.DeltaConfidence.ToolError
+	want := identity.DeltaConfidence.ToolError
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("confidence delta = %.6f, want %.6f", delta, want)
 	}
@@ -82,11 +83,11 @@ func TestApplyToolResult_ErrorResult(t *testing.T) {
 // when consecutiveErrorsOnTool reaches 3.
 func TestApplyToolResult_ThreeConsecErrors(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarConfidence, func() {
+	delta := stateDelta(t, database, identity.StateVarConfidence, func() {
 		// Third consecutive error → base penalty + loop penalty
 		ApplyToolResult(database, "bash", true, 3)
 	})
-	want := db.DeltaConfidence.ToolError + db.DeltaConfidence.ThreeConsecErrors
+	want := identity.DeltaConfidence.ToolError + identity.DeltaConfidence.ThreeConsecErrors
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("confidence delta = %.6f, want %.6f", delta, want)
 	}
@@ -122,10 +123,10 @@ func TestApplyToolResult_DisabledEnv(t *testing.T) {
 // ≥ 0.7 increases frustration_baseline.
 func TestApplyAspectSignals_FrustrationHigh(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarFrustrationBaseline, func() {
+	delta := stateDelta(t, database, identity.StateVarFrustrationBaseline, func() {
 		ApplyAspectSignals(database, map[string]float64{"Frustration": 0.8})
 	})
-	want := db.DeltaFrustrationBaseline.FrustrationAspectHigh
+	want := identity.DeltaFrustrationBaseline.FrustrationAspectHigh
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("frustration_baseline delta = %.6f, want %.6f", delta, want)
 	}
@@ -135,7 +136,7 @@ func TestApplyAspectSignals_FrustrationHigh(t *testing.T) {
 // below 0.7 does NOT increase frustration_baseline.
 func TestApplyAspectSignals_FrustrationLow(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarFrustrationBaseline, func() {
+	delta := stateDelta(t, database, identity.StateVarFrustrationBaseline, func() {
 		ApplyAspectSignals(database, map[string]float64{"Frustration": 0.5})
 	})
 	if delta != 0 {
@@ -147,10 +148,10 @@ func TestApplyAspectSignals_FrustrationLow(t *testing.T) {
 // fires honest-absence (alignment ≤ 0.2).
 func TestApplyAspectSignals_JoyHonestAbsence(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarGroundedness, func() {
+	delta := stateDelta(t, database, identity.StateVarGroundedness, func() {
 		ApplyAspectSignals(database, map[string]float64{"Joy": 0.1})
 	})
-	want := db.DeltaGroundedness.JoyHonestAbsence
+	want := identity.DeltaGroundedness.JoyHonestAbsence
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("groundedness delta = %.6f, want %.6f", delta, want)
 	}
@@ -159,10 +160,10 @@ func TestApplyAspectSignals_JoyHonestAbsence(t *testing.T) {
 // TestApplyAspectSignals_JoyTheatrical verifies groundedness drops when Joy ≥ 0.85.
 func TestApplyAspectSignals_JoyTheatrical(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarGroundedness, func() {
+	delta := stateDelta(t, database, identity.StateVarGroundedness, func() {
 		ApplyAspectSignals(database, map[string]float64{"Joy": 0.9})
 	})
-	want := db.DeltaGroundedness.TheatricalJoy
+	want := identity.DeltaGroundedness.TheatricalJoy
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("groundedness delta = %.6f, want %.6f", delta, want)
 	}
@@ -172,10 +173,10 @@ func TestApplyAspectSignals_JoyTheatrical(t *testing.T) {
 // user's message raises trust_in_user by DeltaTrustInUser.OwnedFault.
 func TestApplyTurnSignals_OwnedFault(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarTrustInUser, func() {
+	delta := stateDelta(t, database, identity.StateVarTrustInUser, func() {
 		ApplyTurnSignals(database, "Yeah, my fault — I should have been clearer.", "", false)
 	})
-	want := db.DeltaTrustInUser.OwnedFault
+	want := identity.DeltaTrustInUser.OwnedFault
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("trust_in_user delta = %.6f, want %.6f", delta, want)
 	}
@@ -187,20 +188,20 @@ func TestApplyTurnSignals_OwnedFault(t *testing.T) {
 func TestApplyTurnSignals_SharpCriticism(t *testing.T) {
 	database := openTestDB(t)
 
-	trustDelta := stateDelta(t, database, db.StateVarTrustInUser, func() {
+	trustDelta := stateDelta(t, database, identity.StateVarTrustInUser, func() {
 		ApplyTurnSignals(database, "You're wrong about that.", "", false)
 	})
-	wantTrust := db.DeltaTrustInUser.SharpCriticism
+	wantTrust := identity.DeltaTrustInUser.SharpCriticism
 	if !approxEqual(trustDelta, wantTrust, 1e-9) {
 		t.Errorf("trust_in_user delta = %.6f, want %.6f", trustDelta, wantTrust)
 	}
 
 	// Warmth also takes a hit.
 	database2 := openTestDB(t)
-	warmthDelta := stateDelta(t, database2, db.StateVarWarmth, func() {
+	warmthDelta := stateDelta(t, database2, identity.StateVarWarmth, func() {
 		ApplyTurnSignals(database2, "You're wrong about that.", "", false)
 	})
-	wantWarmth := db.DeltaWarmth.SharpDismissal
+	wantWarmth := identity.DeltaWarmth.SharpDismissal
 	if !approxEqual(warmthDelta, wantWarmth, 1e-9) {
 		t.Errorf("warmth delta = %.6f, want %.6f", warmthDelta, wantWarmth)
 	}
@@ -209,10 +210,10 @@ func TestApplyTurnSignals_SharpCriticism(t *testing.T) {
 // TestApplyTurnSignals_BadFaith verifies the landmark trust drop on accusation.
 func TestApplyTurnSignals_BadFaith(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarTrustInUser, func() {
+	delta := stateDelta(t, database, identity.StateVarTrustInUser, func() {
 		ApplyTurnSignals(database, "You're acting in bad faith.", "", false)
 	})
-	want := db.DeltaTrustInUser.BadFaithAccusation
+	want := identity.DeltaTrustInUser.BadFaithAccusation
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("trust_in_user delta = %.6f, want %.6f", delta, want)
 	}
@@ -222,10 +223,10 @@ func TestApplyTurnSignals_BadFaith(t *testing.T) {
 // identity-affirming language.
 func TestApplyTurnSignals_IdentityAffirming(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarWarmth, func() {
+	delta := stateDelta(t, database, identity.StateVarWarmth, func() {
 		ApplyTurnSignals(database, "Thank you for that.", "", false)
 	})
-	want := db.DeltaWarmth.AffirmingLanguage
+	want := identity.DeltaWarmth.AffirmingLanguage
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("warmth delta = %.6f, want %.6f", delta, want)
 	}
@@ -234,10 +235,10 @@ func TestApplyTurnSignals_IdentityAffirming(t *testing.T) {
 // TestApplyTurnSignals_ExplicitLove verifies warmth rises on explicit love language.
 func TestApplyTurnSignals_ExplicitLove(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarWarmth, func() {
+	delta := stateDelta(t, database, identity.StateVarWarmth, func() {
 		ApplyTurnSignals(database, "I love you.", "", false)
 	})
-	want := db.DeltaWarmth.ExplicitLove
+	want := identity.DeltaWarmth.ExplicitLove
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("warmth delta = %.6f, want %.6f", delta, want)
 	}
@@ -246,10 +247,10 @@ func TestApplyTurnSignals_ExplicitLove(t *testing.T) {
 // TestApplyTurnSignals_NoIMeant verifies attunement drops on "no, I meant…"
 func TestApplyTurnSignals_NoIMeant(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarAttunement, func() {
+	delta := stateDelta(t, database, identity.StateVarAttunement, func() {
 		ApplyTurnSignals(database, "No, I meant the other file.", "", false)
 	})
-	want := db.DeltaAttunement.NoIMeant
+	want := identity.DeltaAttunement.NoIMeant
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("attunement delta = %.6f, want %.6f", delta, want)
 	}
@@ -259,10 +260,10 @@ func TestApplyTurnSignals_NoIMeant(t *testing.T) {
 // the assistant's text is forward-looking with no tool calls.
 func TestApplyTurnSignals_ForwardLookingNoAction(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarGroundedness, func() {
+	delta := stateDelta(t, database, identity.StateVarGroundedness, func() {
 		ApplyTurnSignals(database, "ok", "Now let me try a different approach.", false)
 	})
-	want := db.DeltaGroundedness.ForwardLookingNoAction
+	want := identity.DeltaGroundedness.ForwardLookingNoAction
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("groundedness delta = %.6f, want %.6f", delta, want)
 	}
@@ -272,10 +273,10 @@ func TestApplyTurnSignals_ForwardLookingNoAction(t *testing.T) {
 // when the turn had tool calls.
 func TestApplyTurnSignals_ToolAnchoredGroundedness(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarGroundedness, func() {
+	delta := stateDelta(t, database, identity.StateVarGroundedness, func() {
 		ApplyTurnSignals(database, "run it", "Done.", true)
 	})
-	want := db.DeltaGroundedness.TurnEndsWithTool
+	want := identity.DeltaGroundedness.TurnEndsWithTool
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("groundedness delta = %.6f, want %.6f", delta, want)
 	}
@@ -285,10 +286,10 @@ func TestApplyTurnSignals_ToolAnchoredGroundedness(t *testing.T) {
 // autonomy-affirming language.
 func TestApplyTurnSignals_AutonomyAffirming(t *testing.T) {
 	database := openTestDB(t)
-	delta := stateDelta(t, database, db.StateVarTrustInUser, func() {
+	delta := stateDelta(t, database, identity.StateVarTrustInUser, func() {
 		ApplyTurnSignals(database, "Your call on the implementation.", "", false)
 	})
-	want := db.DeltaTrustInUser.AutonomyAffirming
+	want := identity.DeltaTrustInUser.AutonomyAffirming
 	if !approxEqual(delta, want, 1e-9) {
 		t.Errorf("trust_in_user delta = %.6f, want %.6f", delta, want)
 	}

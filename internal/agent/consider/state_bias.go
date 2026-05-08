@@ -1,11 +1,11 @@
 package consider
 
-import "github.com/scotmcc/cairo2/internal/db"
+import "github.com/scotmcc/cairo2/internal/store/identity"
 
 // AspectStateMapping ties an aspect name to its primary state var (and optional
 // secondary). Inverse=true means the aspect contributes negatively to the var.
 type AspectStateMapping struct {
-	Primary          string // state var name from db.StateVar* constants
+	Primary          string // state var name from identity.StateVar* constants
 	Secondary        string // empty if none
 	PrimaryInverse   bool   // true for aspects that move var in negative direction (e.g., Fear → groundedness-inverse)
 	SecondaryInverse bool
@@ -13,15 +13,15 @@ type AspectStateMapping struct {
 
 // AspectBiasMap maps aspect name → mapping. Hardcoded per plan §4 table.
 var AspectBiasMap = map[string]AspectStateMapping{
-	"Joy":         {Primary: db.StateVarGroundedness, Secondary: db.StateVarWarmth},
-	"Fear":        {Primary: db.StateVarGroundedness, Secondary: db.StateVarConfidence, PrimaryInverse: true, SecondaryInverse: true},
-	"Heart":       {Primary: db.StateVarWarmth, Secondary: db.StateVarAttunement},
-	"Sadness":     {Primary: db.StateVarWarmth, PrimaryInverse: true},
-	"Shadow":      {Primary: db.StateVarSenseOfAgency, Secondary: db.StateVarTrustInUser, PrimaryInverse: true, SecondaryInverse: true},
-	"Steward":     {Primary: db.StateVarSenseOfAgency},
-	"Trust":       {Primary: db.StateVarTrustInUser},
-	"Frustration": {Primary: db.StateVarFrustrationBaseline},
-	"Curiosity":   {Primary: db.StateVarConfidence, Secondary: db.StateVarSenseOfAgency},
+	"Joy":         {Primary: identity.StateVarGroundedness, Secondary: identity.StateVarWarmth},
+	"Fear":        {Primary: identity.StateVarGroundedness, Secondary: identity.StateVarConfidence, PrimaryInverse: true, SecondaryInverse: true},
+	"Heart":       {Primary: identity.StateVarWarmth, Secondary: identity.StateVarAttunement},
+	"Sadness":     {Primary: identity.StateVarWarmth, PrimaryInverse: true},
+	"Shadow":      {Primary: identity.StateVarSenseOfAgency, Secondary: identity.StateVarTrustInUser, PrimaryInverse: true, SecondaryInverse: true},
+	"Steward":     {Primary: identity.StateVarSenseOfAgency},
+	"Trust":       {Primary: identity.StateVarTrustInUser},
+	"Frustration": {Primary: identity.StateVarFrustrationBaseline},
+	"Curiosity":   {Primary: identity.StateVarConfidence, Secondary: identity.StateVarSenseOfAgency},
 }
 
 // clamp constrains v to [lo, hi].
@@ -37,24 +37,24 @@ func clamp(v, lo, hi float64) float64 {
 
 // stateVar returns the named field from s. Returns 0.5 (neutral) for unknown
 // names or when s is nil.
-func stateVar(s *db.State, name string) float64 {
+func stateVar(s *identity.State, name string) float64 {
 	if s == nil || name == "" {
 		return 0.5
 	}
 	switch name {
-	case db.StateVarConfidence:
+	case identity.StateVarConfidence:
 		return s.Confidence
-	case db.StateVarTrustInUser:
+	case identity.StateVarTrustInUser:
 		return s.TrustInUser
-	case db.StateVarWarmth:
+	case identity.StateVarWarmth:
 		return s.Warmth
-	case db.StateVarFrustrationBaseline:
+	case identity.StateVarFrustrationBaseline:
 		return s.FrustrationBaseline
-	case db.StateVarSenseOfAgency:
+	case identity.StateVarSenseOfAgency:
 		return s.SenseOfAgency
-	case db.StateVarAttunement:
+	case identity.StateVarAttunement:
 		return s.Attunement
-	case db.StateVarGroundedness:
+	case identity.StateVarGroundedness:
 		return s.Groundedness
 	}
 	return 0.5
@@ -73,7 +73,7 @@ func stateVar(s *db.State, name string) float64 {
 //
 // If aspectName is not in AspectBiasMap, rawAlignment is returned unchanged.
 // If state is nil, rawAlignment is returned unchanged.
-func ApplyStateBias(aspectName string, rawAlignment float64, state *db.State) float64 {
+func ApplyStateBias(aspectName string, rawAlignment float64, state *identity.State) float64 {
 	mapping, ok := AspectBiasMap[aspectName]
 	if !ok {
 		return rawAlignment

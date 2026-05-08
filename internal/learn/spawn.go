@@ -13,14 +13,15 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/jobs"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // SpawnRequest carries everything SpawnBackground needs to fire off an
 // indexing run as a subprocess. SummaryModel may be empty to fall back to
 // the global config.summary_model.
 type SpawnRequest struct {
-	DB           *db.DB
+	DB           *sqliteopen.DB
 	Project      string
 	Root         string // must be absolute
 	SummaryModel string // optional override
@@ -63,17 +64,17 @@ func SpawnBackground(req SpawnRequest, sysProc func() *syscall.SysProcAttr) (*Sp
 	if err != nil {
 		return nil, fmt.Errorf("create task: %w", err)
 	}
-	if err := req.DB.Tasks.SetStatus(task.ID, db.StatusRunning); err != nil {
+	if err := req.DB.Tasks.SetStatus(task.ID, jobs.StatusRunning); err != nil {
 		return nil, fmt.Errorf("set running: %w", err)
 	}
 
-	logDir := filepath.Join(db.DefaultDataDir(), "logs")
+	logDir := filepath.Join(sqliteopen.DefaultDataDir(), "logs")
 	_ = os.MkdirAll(logDir, 0755)
 	logPath := filepath.Join(logDir, fmt.Sprintf("task_%d.log", task.ID))
 	_ = req.DB.Tasks.SetLogPath(task.ID, logPath)
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		req.DB.Tasks.SetStatusAndResult(task.ID, db.StatusFailed, fmt.Sprintf("create log: %v", err))
+		req.DB.Tasks.SetStatusAndResult(task.ID, jobs.StatusFailed, fmt.Sprintf("create log: %v", err))
 		return nil, err
 	}
 
@@ -101,11 +102,11 @@ func SpawnBackground(req SpawnRequest, sysProc func() *syscall.SysProcAttr) (*Sp
 
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
-		req.DB.Tasks.SetStatusAndResult(task.ID, db.StatusFailed, fmt.Sprintf("spawn failed: %v", err))
+		req.DB.Tasks.SetStatusAndResult(task.ID, jobs.StatusFailed, fmt.Sprintf("spawn failed: %v", err))
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
 	logFile.Close()
-	token, err := db.ReadStartToken(cmd.Process.Pid)
+	token, err := jobs.ReadStartToken(cmd.Process.Pid)
 	if err != nil {
 		log.Printf("warn: ReadStartToken pid=%d: %v (continuing with empty token; sweep will fall back to PID-only liveness)", cmd.Process.Pid, err)
 	}

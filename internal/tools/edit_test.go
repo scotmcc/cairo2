@@ -6,14 +6,14 @@ import (
 	"testing"
 
 	"github.com/scotmcc/cairo2/internal/agent"
-	"github.com/scotmcc/cairo2/internal/db"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // setupEditCtx creates a real DB for unsafe_mode checks and returns a ToolContext.
 func setupEditCtx(t *testing.T, workDir string) *agent.ToolContext {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "test.db")
-	d, err := db.OpenAt(path)
+	d, err := sqliteopen.OpenAt(path)
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}

@@ -16,8 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/scotmcc/cairo2/internal/db"
 	"github.com/scotmcc/cairo2/internal/llm"
+	"github.com/scotmcc/cairo2/internal/store/config"
+	"github.com/scotmcc/cairo2/internal/store/identity"
+	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // aspectSchema is the JSON Schema passed via Ollama's Format field to force
@@ -111,14 +113,14 @@ type ConsiderResult struct {
 	// Activations carries the same per-aspect rows persisted via Insert, in the
 	// runner's order. Used by the agent to render named-aspect blocks into the
 	// inner_voice column so the assistant can surface aspect names.
-	Activations []db.ConsiderActivation
+	Activations []identity.ConsiderActivation
 }
 
 // RunWithResultForced performs the consider step unconditionally, bypassing the
 // consider.enabled config gate. Use when the caller has already decided to run
 // consider (e.g. the /c per-message opt-in). Returns a ConsiderResult with
 // per-aspect alignment scores.
-func RunWithResultForced(ctx context.Context, database *db.DB, llmClient *llm.Client, pub EventPublisher, sessionID int64, roleName, lastUserMsg, triggerSource string) (ConsiderResult, error) {
+func RunWithResultForced(ctx context.Context, database *sqliteopen.DB, llmClient *llm.Client, pub EventPublisher, sessionID int64, roleName, lastUserMsg, triggerSource string) (ConsiderResult, error) {
 	// Per-role gate (v118). Tool-using roles (coder/researcher/reviewer/
 	// orchestrator) opt out via roles.consider=0. Lookup failures are
 	// non-fatal — proceed as if consider is enabled so a stale or missing
@@ -143,14 +145,14 @@ func RunWithResultForced(ctx context.Context, database *db.DB, llmClient *llm.Cl
 		currentState = nil
 	}
 
-	model, _ := database.Config.Get(db.KeyConsiderModel)
+	model, _ := database.Config.Get(config.KeyConsiderModel)
 	if model == "" {
-		model, _ = database.Config.Get(db.KeyModel)
+		model, _ = database.Config.Get(config.KeyModel)
 	}
 	if model == "" {
 		return ConsiderResult{}, fmt.Errorf("consider: no model configured — set config.model via the wizard or config tool")
 	}
-	summaryModel, _ := database.Config.Get(db.KeyConsiderSummaryModel)
+	summaryModel, _ := database.Config.Get(config.KeyConsiderSummaryModel)
 	if summaryModel == "" {
 		summaryModel = model
 	}
@@ -163,7 +165,7 @@ func RunWithResultForced(ctx context.Context, database *db.DB, llmClient *llm.Cl
 		return ConsiderResult{}, nil
 	}
 
-	tmpl, _ := database.Config.Get(db.KeyConsiderTemplate)
+	tmpl, _ := database.Config.Get(config.KeyConsiderTemplate)
 	if tmpl == "" {
 		tmpl = defaultTemplate
 	}
@@ -181,7 +183,7 @@ func RunWithResultForced(ctx context.Context, database *db.DB, llmClient *llm.Cl
 
 	// Fetch prior user message history if the gate is enabled.
 	var priorUserMsgs []string
-	includeHistory, _ := database.Config.Get(db.KeyConsiderIncludeUserHistory)
+	includeHistory, _ := database.Config.Get(config.KeyConsiderIncludeUserHistory)
 	if includeHistory != "false" {
 		if msgs, err := database.Messages.ForSession(sessionID); err == nil {
 			for _, m := range msgs {
@@ -218,7 +220,7 @@ func RunWithResultForced(ctx context.Context, database *db.DB, llmClient *llm.Cl
 	var wg sync.WaitGroup
 	for i, aspect := range aspects {
 		wg.Add(1)
-		go func(idx int, a *db.ConsiderAspect) {
+		go func(idx int, a *identity.ConsiderAspect) {
 			defer wg.Done()
 			if pub != nil {
 				pub.Publish(PublishEvent{Type: evtAspectStart, Payload: AspectStartPayload{Name: a.Name}})
@@ -257,7 +259,7 @@ func RunWithResultForced(ctx context.Context, database *db.DB, llmClient *llm.Cl
 	// alignment=0 — staying quiet is signal). message_id is back-filled by the
 	// caller once the user message that holds the inner_voice is persisted.
 	activationIDs := make([]int64, 0, len(results))
-	activations := make([]db.ConsiderActivation, 0, len(results))
+	activations := make([]identity.ConsiderActivation, 0, len(results))
 	for _, r := range results {
 		if r.aspect == "" {
 			continue // slot was never written (shouldn't happen, defensive)
@@ -269,7 +271,7 @@ func RunWithResultForced(ctx context.Context, database *db.DB, llmClient *llm.Cl
 			continue
 		}
 		activationIDs = append(activationIDs, id)
-		activations = append(activations, db.ConsiderActivation{
+		activations = append(activations, identity.ConsiderActivation{
 			ID:            id,
 			SessionID:     sessionID,
 			AspectName:    r.aspect,
@@ -317,7 +319,7 @@ func RunWithResultForced(ctx context.Context, database *db.DB, llmClient *llm.Cl
 
 // runAspectFull is the canonical path: returns the parsed aspectResponse
 // (raw thought/question/alignment) AND the formatted summarizer-input text.
-func runAspectFull(ctx context.Context, llmClient *llm.Client, model, name, traits, tmpl, userMsg string, priorUserMsgs []string, state *db.State, lastInnerVoice string) (parsed aspectResponse, text string, err error) {
+func runAspectFull(ctx context.Context, llmClient *llm.Client, model, name, traits, tmpl, userMsg string, priorUserMsgs []string, state *identity.State, lastInnerVoice string) (parsed aspectResponse, text string, err error) {
 	sysPrompt := BuildSystemPrompt(name, traits, tmpl)
 
 	userContent := buildAspectUserContent(userMsg, priorUserMsgs, state, lastInnerVoice)
@@ -437,7 +439,7 @@ Return your response as a single JSON object:
 // before "The user just said:". When lastInnerVoice is non-empty, a
 // "## Last Known State" block carrying the previous turn's consider summary
 // follows the felt-ground line, giving the aspect the arc, not just a snapshot.
-func buildAspectUserContent(currentMsg string, priorUserMsgs []string, state *db.State, lastInnerVoice string) string {
+func buildAspectUserContent(currentMsg string, priorUserMsgs []string, state *identity.State, lastInnerVoice string) string {
 	var b strings.Builder
 
 	if len(priorUserMsgs) > 0 {
