@@ -147,6 +147,18 @@ Each gate validates independently. If any gate fails, the request stops. The age
 
 ---
 
+---
+
+## D12 — Go module path is `github.com/scotmcc/cairo2`
+
+**Decision:** The canonical Go module path for cairo2 is `github.com/scotmcc/cairo2`. All internal import paths use this prefix.
+
+**Rationale:** Consistent with the existing cairo module (`github.com/scotmcc/cairo`). The GitHub remote will be created at `github.com/scotmcc/cairo2` before Phase 1.1 ships. Deciding before any implementation agent touches `go.mod` prevents implicit guessing that would require a global rewrite later.
+
+**Alternative considered:** An org-scoped path (e.g., `github.com/someorg/cairo2`). Deferred — if cairo2 ever moves to an org, this is a known, mechanical global rewrite. Not worth speculating on today.
+
+---
+
 ## Open questions (for future decision)
 
 1. Does `cairo-registry` eventually become the enterprise gateway (proxying chat sessions to agent nodes), or does that grow into a separate `cmd/cairo-gateway`? Current answer: registry grows into it; split if it gets too large.
