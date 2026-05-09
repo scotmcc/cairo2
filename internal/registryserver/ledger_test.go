@@ -2,6 +2,8 @@ package registryserver
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"testing"
 	"time"
 )
@@ -343,4 +345,141 @@ func TestRegister_StableAgentID(t *testing.T) {
 			t.Errorf("expected 1 row, got %d", count)
 		}
 	})
+}
+
+func TestRevokeStatusChange(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	ctx := context.Background()
+	agentID, _, err := l.Register(ctx, "", "alice", "box", "box.ts.net", "v1")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	if err := l.Revoke(ctx, agentID, "alice"); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+
+	status, err := l.GetStatus(ctx, agentID)
+	if err != nil {
+		t.Fatalf("get status: %v", err)
+	}
+	if status != "revoked" {
+		t.Errorf("expected status=revoked, got %q", status)
+	}
+
+	if err := l.Revoke(ctx, "missing-id", "alice"); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("expected sql.ErrNoRows for unknown id, got %v", err)
+	}
+
+	if err := l.Revoke(ctx, agentID, "bob"); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("expected sql.ErrNoRows for owner mismatch, got %v", err)
+	}
+}
+
+func TestRevokedAgentRejectsReRegister(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	ctx := context.Background()
+
+	t.Run("requestedAgentID path", func(t *testing.T) {
+		agentID, _, err := l.Register(ctx, "", "alice", "lap1", "lap1.ts.net", "v1")
+		if err != nil {
+			t.Fatalf("register: %v", err)
+		}
+		if err := l.Revoke(ctx, agentID, "alice"); err != nil {
+			t.Fatalf("revoke: %v", err)
+		}
+		_, _, err = l.Register(ctx, agentID, "alice", "lap1", "lap1.ts.net", "v1")
+		if !errors.Is(err, ErrRevoked) {
+			t.Errorf("expected ErrRevoked on re-register via agent_id, got %v", err)
+		}
+	})
+
+	t.Run("legacy path", func(t *testing.T) {
+		agentID, _, err := l.Register(ctx, "", "bob", "srv", "srv.ts.net", "v1")
+		if err != nil {
+			t.Fatalf("register: %v", err)
+		}
+		if err := l.Revoke(ctx, agentID, "bob"); err != nil {
+			t.Fatalf("revoke: %v", err)
+		}
+		_, _, err = l.Register(ctx, "", "bob", "srv", "srv.ts.net", "v1")
+		if !errors.Is(err, ErrRevoked) {
+			t.Errorf("expected ErrRevoked on re-register via legacy path, got %v", err)
+		}
+	})
+}
+
+func TestGetStatus(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	ctx := context.Background()
+	agentID, _, err := l.Register(ctx, "", "alice", "box", "box.ts.net", "v1")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	status, err := l.GetStatus(ctx, agentID)
+	if err != nil {
+		t.Fatalf("get status: %v", err)
+	}
+	if status != "active" {
+		t.Errorf("expected active, got %q", status)
+	}
+
+	_, err = l.GetStatus(ctx, "00000000-0000-0000-0000-000000000000")
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("expected sql.ErrNoRows for unknown agent, got %v", err)
+	}
+}
+
+func TestInsertCommand(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	ctx := context.Background()
+	if err := l.InsertCommand(ctx, "alice", "echo hello"); err != nil {
+		t.Fatalf("insert command: %v", err)
+	}
+	if err := l.InsertCommand(ctx, "alice", "echo world"); err != nil {
+		t.Fatalf("insert command 2: %v", err)
+	}
+
+	var count int
+	if err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM commands`).Scan(&count); err != nil {
+		t.Fatalf("count commands: %v", err)
+	}
+	if count < 2 {
+		t.Errorf("expected at least 2 rows, got %d", count)
+	}
+
+	var operator, command string
+	var createdAt int64
+	if err := l.db.QueryRowContext(ctx,
+		`SELECT operator, command, created_at FROM commands ORDER BY id LIMIT 1`,
+	).Scan(&operator, &command, &createdAt); err != nil {
+		t.Fatalf("query first command: %v", err)
+	}
+	if operator != "alice" || command != "echo hello" {
+		t.Errorf("first row mismatch: operator=%q command=%q", operator, command)
+	}
+	if createdAt <= 0 {
+		t.Errorf("created_at not set: %d", createdAt)
+	}
 }

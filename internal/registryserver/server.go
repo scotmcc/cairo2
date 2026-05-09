@@ -118,6 +118,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	agentID, registeredAt, err := s.ledger.Register(r.Context(), req.AgentID, owner, req.Hostname, req.TailnetNode, req.Version)
 	if err != nil {
+		if errors.Is(err, ErrRevoked) {
+			http.Error(w, `{"error":"agent revoked"}`, http.StatusForbidden)
+			return
+		}
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}

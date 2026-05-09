@@ -94,6 +94,10 @@ func (h *wsHandler) handle(w http.ResponseWriter, r *http.Request) {
 			if err := h.ledger.Touch(ctx, agentID); err != nil {
 				log.Printf("ws: agent_id=%s touch_error=%v", agentID, err)
 			}
+			if status, err := h.ledger.GetStatus(ctx, agentID); err == nil && status == "revoked" {
+				log.Printf("ws: agent_id=%s event=close reason=revoked", agentID)
+				cancel()
+			}
 		} else {
 			log.Printf("ws: agent_id=%s event=unknown_frame type=%s", agentID, frame.Type)
 		}

@@ -3,6 +3,7 @@ package registryserver
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"strings"
 	"time"
@@ -23,7 +24,16 @@ CREATE TABLE IF NOT EXISTS agents (
   status        TEXT NOT NULL,
   ws_connected  INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_agents_owner_host ON agents(owner, hostname)`
+CREATE INDEX IF NOT EXISTS idx_agents_owner_host ON agents(owner, hostname);
+CREATE TABLE IF NOT EXISTS commands (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  operator   TEXT NOT NULL,
+  command    TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+)`
+
+// ErrRevoked indicates an attempt to register or use an agent whose status is 'revoked'.
+var ErrRevoked = errors.New("agent revoked")
 
 // Agent is a row from the agents table.
 type Agent struct {
@@ -76,11 +86,16 @@ func (l *Ledger) Register(ctx context.Context, requestedAgentID, owner, hostname
 
 	if requestedAgentID != "" {
 		var existingAt int64
+		var existingStatus string
 		lookupErr := tx.QueryRowContext(ctx,
-			`SELECT registered_at FROM agents WHERE agent_id = ? AND owner = ?`,
+			`SELECT registered_at, status FROM agents WHERE agent_id = ? AND owner = ?`,
 			requestedAgentID, owner,
-		).Scan(&existingAt)
+		).Scan(&existingAt, &existingStatus)
 		if lookupErr == nil {
+			if existingStatus == "revoked" {
+				_ = tx.Rollback()
+				return "", 0, ErrRevoked
+			}
 			_, err = tx.ExecContext(ctx,
 				`UPDATE agents SET hostname = ?, tailnet_node = ?, version = ?, last_seen_at = ?, status = 'active' WHERE agent_id = ?`,
 				hostname, tailnetNode, version, now, requestedAgentID,
@@ -101,12 +116,17 @@ func (l *Ledger) Register(ctx context.Context, requestedAgentID, owner, hostname
 
 	var existingID string
 	var existingAt int64
+	var existingStatus string
 	err = tx.QueryRowContext(ctx,
-		`SELECT agent_id, registered_at FROM agents WHERE owner = ? AND hostname = ? AND tailnet_node = ?`,
+		`SELECT agent_id, registered_at, status FROM agents WHERE owner = ? AND hostname = ? AND tailnet_node = ?`,
 		owner, hostname, tailnetNode,
-	).Scan(&existingID, &existingAt)
+	).Scan(&existingID, &existingAt, &existingStatus)
 
 	if err == nil {
+		if existingStatus == "revoked" {
+			_ = tx.Rollback()
+			return "", 0, ErrRevoked
+		}
 		// Row found — update last_seen_at, status, version.
 		_, err = tx.ExecContext(ctx,
 			`UPDATE agents SET last_seen_at = ?, status = 'active', version = ? WHERE owner = ? AND hostname = ? AND tailnet_node = ?`,
@@ -285,6 +305,46 @@ func (l *Ledger) GetByOwner(ctx context.Context, agentID, owner string) (*Agent,
 		return nil, err
 	}
 	return &a, nil
+}
+
+// Revoke sets status='revoked' for agentID scoped to owner.
+// Returns sql.ErrNoRows if the agent does not exist or owner mismatch.
+func (l *Ledger) Revoke(ctx context.Context, agentID, owner string) error {
+	result, err := l.db.ExecContext(ctx,
+		`UPDATE agents SET status = 'revoked' WHERE agent_id = ? AND owner = ?`,
+		agentID, owner,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// GetStatus returns the status string for agentID.
+// Returns sql.ErrNoRows if the agent does not exist.
+func (l *Ledger) GetStatus(ctx context.Context, agentID string) (string, error) {
+	var status string
+	err := l.db.QueryRowContext(ctx,
+		`SELECT status FROM agents WHERE agent_id = ?`,
+		agentID,
+	).Scan(&status)
+	return status, err
+}
+
+// InsertCommand persists a broadcast command to the commands table.
+func (l *Ledger) InsertCommand(ctx context.Context, operator, command string) error {
+	_, err := l.db.ExecContext(ctx,
+		`INSERT INTO commands (operator, command, created_at) VALUES (?, ?, ?)`,
+		operator, command, time.Now().Unix(),
+	)
+	return err
 }
 
 // Close closes the underlying database connection.
