@@ -1,7 +1,9 @@
 package registryserver
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +15,8 @@ func NewAdmin(ledger *Ledger, startedAt time.Time) http.Handler {
 	mux.HandleFunc("GET /agents", handleAdminAgents(ledger))
 	mux.HandleFunc("GET /agents/{id}", handleAdminAgent(ledger))
 	mux.HandleFunc("GET /healthz", handleAdminHealthz(ledger, startedAt))
+	mux.HandleFunc("POST /agents/{id}/revoke", handleAdminRevoke(ledger))
+	mux.HandleFunc("POST /broadcast", handleAdminBroadcast(ledger))
 	return mux
 }
 
@@ -56,6 +60,52 @@ func handleAdminAgent(ledger *Ledger) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(agent)
+	}
+}
+
+func handleAdminRevoke(ledger *Ledger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		operator := operatorFromHeader(r)
+		if operator == "" {
+			http.Error(w, `{"error":"operator required"}`, http.StatusBadRequest)
+			return
+		}
+		if err := ledger.Revoke(r.Context(), id, operator); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"revoked"}`))
+	}
+}
+
+func handleAdminBroadcast(ledger *Ledger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		operator := operatorFromHeader(r)
+		if operator == "" {
+			http.Error(w, `{"error":"operator required"}`, http.StatusBadRequest)
+			return
+		}
+		var body struct {
+			Command string `json:"command"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Command == "" {
+			http.Error(w, `{"error":"command required"}`, http.StatusBadRequest)
+			return
+		}
+		if err := ledger.InsertCommand(r.Context(), operator, body.Command); err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"queued"}`))
 	}
 }
 

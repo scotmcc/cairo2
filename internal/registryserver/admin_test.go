@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -122,6 +123,89 @@ func TestAdminGetAgent(t *testing.T) {
 			t.Fatalf("expected 404, got %d: cross-owner agent should not leak", rr.Code)
 		}
 	})
+}
+
+func TestAdminRevoke(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	ctx := context.Background()
+	aliceID, _, err := l.Register(ctx, "", "alice", "a-host", "a.ts.net", "v1")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	h := NewAdmin(l, time.Now())
+
+	req := httptest.NewRequest("POST", "/agents/"+aliceID+"/revoke", nil)
+	req.Header.Set("X-Operator-Identity", "alice")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body=%s)", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"revoked"`) {
+		t.Errorf("expected revoked status in body, got %q", rr.Body.String())
+	}
+	status, err := l.GetStatus(ctx, aliceID)
+	if err != nil {
+		t.Fatalf("get status: %v", err)
+	}
+	if status != "revoked" {
+		t.Errorf("expected status=revoked, got %q", status)
+	}
+}
+
+func TestAdminRevokeNotFound(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	h := NewAdmin(l, time.Now())
+
+	req := httptest.NewRequest("POST", "/agents/00000000-0000-0000-0000-000000000000/revoke", nil)
+	req.Header.Set("X-Operator-Identity", "alice")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestAdminBroadcast(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	h := NewAdmin(l, time.Now())
+
+	req := httptest.NewRequest("POST", "/broadcast", strings.NewReader(`{"command":"test"}`))
+	req.Header.Set("X-Operator-Identity", "alice")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d (body=%s)", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"queued"`) {
+		t.Errorf("expected queued status in body, got %q", rr.Body.String())
+	}
+	var count int
+	if err := l.db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM commands`).Scan(&count); err != nil {
+		t.Fatalf("count commands: %v", err)
+	}
+	if count < 1 {
+		t.Errorf("expected commands >= 1, got %d", count)
+	}
 }
 
 func TestAdminHealthz(t *testing.T) {
