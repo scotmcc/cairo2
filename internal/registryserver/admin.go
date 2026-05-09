@@ -1,0 +1,68 @@
+package registryserver
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+	"time"
+)
+
+// NewAdmin returns the admin mux pre-wired with operator-scoped endpoints.
+func NewAdmin(ledger *Ledger, startedAt time.Time) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /agents", handleAdminAgents(ledger))
+	mux.HandleFunc("GET /agents/{id}", handleAdminAgent(ledger))
+	mux.HandleFunc("GET /healthz", handleAdminHealthz(ledger, startedAt))
+	return mux
+}
+
+func operatorFromHeader(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get("X-Operator-Identity"))
+}
+
+func handleAdminAgents(ledger *Ledger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		operator := operatorFromHeader(r)
+		agents := []Agent{}
+		if operator != "" {
+			var err error
+			agents, err = ledger.ListByOwner(r.Context(), operator)
+			if err != nil {
+				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(agents)
+	}
+}
+
+func handleAdminAgent(ledger *Ledger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		operator := operatorFromHeader(r)
+		if operator == "" {
+			http.NotFound(w, r)
+			return
+		}
+		agent, err := ledger.GetByOwner(r.Context(), id, operator)
+		if err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		if agent == nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(agent)
+	}
+}
+
+func handleAdminHealthz(ledger *Ledger, startedAt time.Time) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		resp := healthzBody(r.Context(), ledger, startedAt)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}
+}

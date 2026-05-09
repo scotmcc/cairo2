@@ -1,0 +1,150 @@
+package registryserver
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func TestAdminAgentsScopedByOperator(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	ctx := context.Background()
+	_, _, _ = l.Register(ctx, "", "alice", "a-host", "a.ts.net", "v1")
+	_, _, _ = l.Register(ctx, "", "bob", "b-host", "b.ts.net", "v1")
+
+	h := NewAdmin(l, time.Now())
+
+	req := httptest.NewRequest("GET", "/agents", nil)
+	req.Header.Set("X-Operator-Identity", "alice")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var agents []Agent
+	if err := json.NewDecoder(rr.Body).Decode(&agents); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(agents) != 1 {
+		t.Fatalf("expected 1 agent for alice, got %d", len(agents))
+	}
+	if agents[0].Owner != "alice" {
+		t.Errorf("expected owner=alice, got %q", agents[0].Owner)
+	}
+}
+
+func TestAdminAgentsHeaderMissing(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	ctx := context.Background()
+	_, _, _ = l.Register(ctx, "", "alice", "a-host", "a.ts.net", "v1")
+
+	h := NewAdmin(l, time.Now())
+
+	req := httptest.NewRequest("GET", "/agents", nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var agents []Agent
+	if err := json.NewDecoder(rr.Body).Decode(&agents); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(agents) != 0 {
+		t.Errorf("expected empty array without header, got %d agents", len(agents))
+	}
+}
+
+func TestAdminGetAgent(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	ctx := context.Background()
+	aliceID, _, _ := l.Register(ctx, "", "alice", "a-host", "a.ts.net", "v1")
+	_, _, _ = l.Register(ctx, "", "bob", "b-host", "b.ts.net", "v1")
+
+	h := NewAdmin(l, time.Now())
+
+	t.Run("hit", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/agents/"+aliceID, nil)
+		req.Header.Set("X-Operator-Identity", "alice")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rr.Code)
+		}
+		var a Agent
+		if err := json.NewDecoder(rr.Body).Decode(&a); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if a.AgentID != aliceID {
+			t.Errorf("expected agent_id=%s, got %s", aliceID, a.AgentID)
+		}
+	})
+
+	t.Run("miss-by-id", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/agents/00000000-0000-0000-0000-000000000000", nil)
+		req.Header.Set("X-Operator-Identity", "alice")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", rr.Code)
+		}
+	})
+
+	t.Run("miss-by-owner", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/agents/"+aliceID, nil)
+		req.Header.Set("X-Operator-Identity", "bob")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d: cross-owner agent should not leak", rr.Code)
+		}
+	})
+}
+
+func TestAdminHealthz(t *testing.T) {
+	l, err := OpenLedger(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open ledger: %v", err)
+	}
+	defer l.Close()
+
+	h := NewAdmin(l, time.Now())
+
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var body healthzResponse
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Status != "ok" && body.Status != "degraded" {
+		t.Errorf("unexpected status: %q", body.Status)
+	}
+}
