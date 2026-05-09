@@ -23,7 +23,10 @@ make test          # go test ./...
 # Build and run from ./bin/cairo
 make run
 
-# Start the TUI (default)
+# Start the TUI (Bubble Tea full-screen)
+./bin/cairo -tui
+
+# Bare invocation drops to the line CLI (`>` REPL) — same as cairo
 ./bin/cairo
 
 # Subcommands
