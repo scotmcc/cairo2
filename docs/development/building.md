@@ -80,7 +80,7 @@ make package
 bash scripts/packaging/build-packages.sh
 ```
 
-Produces `.deb` and `.rpm` packages under `build/packages/`. The packages include all three binaries. Flags: `--deb`, `--rpm`, `--version VERSION`, `--skip-extension`, `--skip-tests`.
+Produces `.deb` and `.rpm` packages under `dist/`. The packages include all three binaries; the `cairo` package also bundles the web-agent and the VS Code `.vsix`. Flags: `--deb`, `--rpm`, `--version VERSION`, `--skip-extension`, `--skip-web-agent`, `--skip-tests`.
 
 ---
 
