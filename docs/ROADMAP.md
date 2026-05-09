@@ -227,6 +227,37 @@ These are the items blocking a clean v0.3.0 final tag. They land in v0.4.0 unles
 
 ---
 
+## Phase 2.1 — Registry Merge (complete 2026-05-09)
+
+The `~/cairo-registry` repo's source (cmd + internal + tests) is now in cairo2; all three binaries build from one tree. The dual-repo split is gone — protocol drift between client and server is no longer a hazard because they share `internal/protocol/registry.go`.
+
+- `internal/registryserver/` — 7 production files + 3 test files (13 tests), package `registryserver`. Ported from `~/cairo-registry/internal/registry/`.
+- `cmd/cairo-registry/main.go` and `cmd/cairo-ctl/main.go` — real implementations replace the Phase 1.6 stubs. `--version` injection via ldflags preserved.
+- `go.mod` — `github.com/coder/websocket v1.8.14` and `github.com/google/uuid` promoted to direct deps.
+- `bash scripts/smoke/registry-client.sh` — full registration + WS liveness + stale sweep + stable-agent-id-on-restart flow passes against the in-tree build.
+
+### Success criteria (verified 2026-05-09)
+
+```bash
+bash scripts/build.sh           # produces bin/cairo, bin/cairo-registry, bin/cairo-ctl
+go test ./...                   # green (including 13 new registryserver tests)
+
+# cairo-registry exposes two listeners:
+#   --addr        public:  GET /healthz, POST /register, GET /agents, GET /agents/{id}/stream
+#   --admin-addr  admin:   GET /agents, GET /agents/{id}, GET /healthz  (default 127.0.0.1:8081)
+
+./bin/cairo-registry --no-tsnet --addr :8080 --admin-addr :8081 --state-dir /tmp/reg-smoke &
+sleep 1
+curl -sf http://localhost:8080/healthz | jq .   # public health, 200 + JSON
+curl -sf http://localhost:8081/agents  | jq .   # admin agent list, 200 + JSON array
+curl -sf http://localhost:8081/healthz | jq .   # admin health, 200 + JSON
+kill %1
+```
+
+Phase 2.2 (deduplicate `internal/protocol/registry.go` between cairo and cairo-registry) is now moot — only one copy exists. Phase 2.3 (consolidate `internal/registry/` client) was completed earlier in Phase 1.5.
+
+---
+
 ## Selene self-tracking (origin: 2026-05-01 morning, Scot)
 
 A pattern observed across both human-Claude and Selene flows: **work that's not finished cleanly leaves residue that the next session has to debug.** Surfaced concretely this morning when the `SubagentStart` hook absorbed Selene's untracked tool implementations into anonymous "checkpoint: pre-subagent" commits — the data wasn't lost, but the traceability was, because dispatch happened before the prior task's loose ends were closed.
