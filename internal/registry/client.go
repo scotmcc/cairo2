@@ -12,24 +12,14 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/scotmcc/cairo2/internal/protocol"
 )
-
-type registerRequest struct {
-	AgentID     string `json:"agent_id,omitempty"`
-	Hostname    string `json:"hostname"`
-	Version     string `json:"version"`
-	TailnetNode string `json:"tailnet_node"`
-}
-
-type registerResponse struct {
-	AgentID      string `json:"agent_id"`
-	RegisteredAt int64  `json:"registered_at"`
-}
 
 // Register POSTs to the registry and returns the assigned agent_id.
 func Register(ctx context.Context, registryURL, agentID, version string) (string, error) {
 	hostname, _ := os.Hostname()
-	body, err := json.Marshal(registerRequest{
+	body, err := json.Marshal(protocol.RegisterRequest{
 		AgentID:  agentID,
 		Hostname: hostname,
 		Version:  version,
@@ -50,7 +40,7 @@ func Register(ctx context.Context, registryURL, agentID, version string) (string
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("registry returned %s", resp.Status)
 	}
-	var rr registerResponse
+	var rr protocol.RegisterResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rr); err != nil {
 		return "", err
 	}
@@ -74,17 +64,12 @@ func HeartbeatLoop(ctx context.Context, registryURL, agentID, version string, in
 	}
 }
 
-type frame struct {
-	Type string          `json:"type"`
-	Body json.RawMessage `json:"body,omitempty"`
-}
-
 // LivenessStream connects to the registry's WebSocket endpoint for the given
 // agentID and keeps the connection alive by responding to ping frames with
 // pongs. Reconnects on disconnect until ctx is cancelled.
 func LivenessStream(ctx context.Context, registryURL, agentID string) {
 	wsURL := toWS(registryURL) + "/agents/" + agentID + "/stream"
-	pong, _ := json.Marshal(frame{Type: "pong"})
+	pong, _ := json.Marshal(protocol.Frame{Type: "pong"})
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -114,7 +99,7 @@ func LivenessStream(ctx context.Context, registryURL, agentID string) {
 				break
 			}
 
-			var f frame
+			var f protocol.Frame
 			if err := json.Unmarshal(msg, &f); err != nil {
 				continue
 			}
