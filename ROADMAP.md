@@ -305,28 +305,33 @@ kill %1 %2
 
 ---
 
-### Phase 2.4 — cairo-ctl Feature Completion
+### Phase 2.4 — cairo-ctl Feature Completion (complete 2026-05-09)
 
 **Action:** Implement `revoke` and `broadcast` subcommands, and the corresponding registry endpoints.
 
 **Resolves:**
 - `cairo-ctl revoke <id>`
 - `cairo-ctl broadcast <command>`
-- `POST /admin/agents/:id/revoke` on registry
-- `POST /admin/broadcast` on registry (commands table in ledger)
+- `POST /agents/{id}/revoke` on registry admin listener
+- `POST /broadcast` on registry admin listener (commands table in ledger)
 
 **Success criteria:**
 ```bash
-cairo-registry --no-tsnet --addr :8080 --db /tmp/reg.db &
-cairo serve --port 11434 --registry http://localhost:8080 --auth=false &
-sleep 2
+./bin/cairo-registry --no-tsnet --addr :8080 --admin-addr :8081 --state-dir /tmp/reg.state &
+sleep 1
 
-AGENT_ID=$(cairo-ctl --addr http://localhost:8080 --operator local list \
+CAIRO_DATA_DIR=/tmp/cairo.state ./bin/cairo serve --port 11434 --register http://localhost:8080 &
+sleep 4
+
+AGENT_ID=$(./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local list \
   | awk 'NR==2{print $1}')
 
-cairo-ctl --addr http://localhost:8080 --operator local revoke $AGENT_ID
-cairo-ctl --addr http://localhost:8080 --operator local list
+./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local revoke $AGENT_ID
+./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local list
 # agent shows status: revoked
+
+./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local broadcast 'hello fleet'
+# broadcast queued
 
 kill %1 %2
 ```

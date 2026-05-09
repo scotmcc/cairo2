@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -20,9 +22,11 @@ Usage:
   cairo-ctl [flags] <subcommand> [args]
 
 Subcommands:
-  list              List all agents visible to --operator
-  get <agent-id>    Show details for a single agent
-  health            Show registry health status
+  list                  List all agents visible to --operator
+  get <agent-id>        Show details for a single agent
+  health                Show registry health status
+  revoke <agent-id>     Revoke an agent (marks status=revoked, rejects re-register)
+  broadcast <command>   Persist a broadcast command to the registry command queue
 
 Flags:
   --addr string     Admin listener address (default "127.0.0.1:8081")
@@ -93,6 +97,20 @@ func main() {
 		cmdGet(client, addr, operator, args[1])
 	case "health":
 		cmdHealth(client, addr)
+	case "revoke":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "error: revoke requires an agent-id argument")
+			usage()
+			os.Exit(1)
+		}
+		cmdRevoke(client, addr, operator, args[1])
+	case "broadcast":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "error: broadcast requires a command argument")
+			usage()
+			os.Exit(1)
+		}
+		cmdBroadcast(client, addr, operator, args[1])
 	default:
 		fmt.Fprintf(os.Stderr, "error: unknown subcommand %q\n\n", args[0])
 		usage()
@@ -144,6 +162,49 @@ func doGet(client *http.Client, url, operator string) (*http.Response, error) {
 		req.Header.Set("X-Operator-Identity", operator)
 	}
 	return client.Do(req)
+}
+
+func doPost(client *http.Client, addr, path, operator string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodPost, "http://"+addr+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if operator != "" {
+		req.Header.Set("X-Operator-Identity", operator)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return client.Do(req)
+}
+
+func cmdRevoke(client *http.Client, addr, operator, agentID string) {
+	resp, err := doPost(client, addr, "/agents/"+agentID+"/revoke", operator, nil)
+	if err != nil {
+		connErr(addr)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		fmt.Fprintf(os.Stderr, "error: agent %s not found\n", agentID)
+		os.Exit(1)
+	}
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "error: unexpected status %d\n", resp.StatusCode)
+		os.Exit(1)
+	}
+	fmt.Printf("revoked %s\n", agentID)
+}
+
+func cmdBroadcast(client *http.Client, addr, operator, command string) {
+	body, _ := json.Marshal(map[string]string{"command": command})
+	resp, err := doPost(client, addr, "/broadcast", operator, bytes.NewReader(body))
+	if err != nil {
+		connErr(addr)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		fmt.Fprintf(os.Stderr, "error: unexpected status %d\n", resp.StatusCode)
+		os.Exit(1)
+	}
+	fmt.Println("broadcast queued")
 }
 
 func connErr(addr string) {
