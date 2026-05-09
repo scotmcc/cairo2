@@ -77,6 +77,8 @@ func main() {
 		os.Exit(0)
 	}
 
+	addr = strings.TrimPrefix(strings.TrimPrefix(addr, "http://"), "https://")
+
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	switch args[0] {

@@ -270,30 +270,35 @@ go test ./internal/protocol/...
 
 ---
 
-### Phase 2.3 — Fleet Client Consolidation
+### Phase 2.3 — Fleet Client Consolidation (complete 2026-05-09)
 
 **Action:** Merge `internal/registry/` and `internal/registry-client/` into one `internal/registry/` package. These were split by accident during a merge conflict.
 
+**Status:** Structurally already done. cairo2 only ever migrated one client package (`internal/registry/client.go` in Phase 1.5). Phase 2.1 placed the server source at `internal/registryserver/` to avoid colliding with the existing client. Phase 2.2 made both sides import the canonical `internal/protocol`. Phase 2.3 closes out the milestone with an end-to-end smoke validating the integration at runtime.
+
 **Resolves:**
-- `internal/registry/` — Register, HeartbeatLoop, LivenessStream (consolidated)
-- Old `internal/registry-client/` deleted
-- All import sites updated
+- `internal/registry/` — Register, HeartbeatLoop, LivenessStream (consolidated, uses `internal/protocol` since 2.2)
+- No `internal/registry-client/` exists in cairo2 (never imported)
+- `cmd/cairo-ctl` URL-arg now accepts both bare `host:port` and `http(s)://host:port`
 
 **Success criteria:**
 ```bash
-# Start registry
-cairo-registry --no-tsnet --addr :8080 --db /tmp/reg.db &
+# Start registry (admin listener serves /agents and /healthz on a separate port)
+./bin/cairo-registry --no-tsnet --addr :8080 --admin-addr :8081 --state-dir /tmp/reg.state &
+sleep 1
 
-# Start cairo in serve mode (connects to registry)
-cairo serve --port 11434 --registry http://localhost:8080 --auth=false &
-sleep 3
+# Start cairo serve (requires an OpenAI-compatible LLM at the configured ollama_url —
+# Ollama, LiteLLM, or vLLM. Fresh CAIRO_DATA_DIR defaults to http://localhost:11434.)
+CAIRO_DATA_DIR=/tmp/cairo.state ./bin/cairo serve --port 11434 --register http://localhost:8080 &
+sleep 4
 
-# Verify registration
-cairo-ctl --addr http://localhost:8080 --operator local list
-# shows one agent with ws_connected: 1
+# Verify registration via the ADMIN listener (port 8081, NOT the public 8080)
+./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local list
+# AGENT_ID  HOSTNAME  OWNER  STATUS  LAST_SEEN
+# <uuid>    <host>    local  active  Ns ago
 
-cairo-ctl --addr http://localhost:8080 --operator local health
-# active: 1
+./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local health
+# total: 1, active: 1, ws_connected: 1
 
 kill %1 %2
 ```
