@@ -330,6 +330,15 @@ AGENT_ID=$(./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local list \
 ./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local list
 # agent shows status: revoked
 
+# Verify the heartbeat-rejection guarantee: cairo serve's HeartbeatLoop will
+# call /register again within ~30s. The registry must reject (403) so the
+# revoked agent does NOT silently flip back to active. This is Phase 2.4's
+# primary security property.
+sleep 35
+./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local list | grep $AGENT_ID | grep -q revoked \
+  && echo "ok: still revoked after heartbeat" \
+  || echo "FAIL: heartbeat flipped status — re-register check missing"
+
 ./bin/cairo-ctl --addr 127.0.0.1:8081 --operator local broadcast 'hello fleet'
 # broadcast queued
 
