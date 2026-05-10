@@ -17,7 +17,7 @@ Some commands are available in both the **TUI** (launched with `-tui`) and the *
 | Command | CLI | TUI | Description |
 |---|---|---|---|
 | `/session` | ✓ | — | Show current session id, name, role, cwd, and last-active time. |
-| `/sessions` | ✓ | — | List all sessions with id, name, role, and last-active timestamp. The current session is marked with `*`. |
+| `/sessions` | ✓ | panel | List all sessions with id, name, role, and last-active timestamp. The current session is marked with `*`. (TUI: open the sessions panel with Ctrl+B instead of typing /sessions.) |
 | `/new` | — | ✓ | Drain the current session's summarizer and start a fresh session in the same terminal. Alias: `/fresh`. |
 | `/reload` | — | ✓ | Restart cairo to pick up config changes (new model, `ollama_url`, etc.). Same terminal, fresh process. Alias: `/restart`. |
 | `/export [path]` | — | ✓ | Export the current transcript to a markdown file. Defaults to `~/.cairo/exports/<session-id>-<timestamp>.md`. Accepts `~/...` paths. |
@@ -28,7 +28,7 @@ Some commands are available in both the **TUI** (launched with `-tui`) and the *
 
 | Command | CLI | TUI | Description |
 |---|---|---|---|
-| `/memories` | ✓ | — | List all stored memories with id and content. Pinned memories are marked `[P]`. |
+| `/memories` | ✓ | panel | List all stored memories with id and content. Pinned memories are marked `[P]`. (TUI: open the memory panel with Ctrl+E.) |
 | `/pinned` | ✓ | ✓ | List only pinned memories. |
 | `/pin <id>` | ✓ | ✓ | Pin a memory so it is never auto-dumped by the dream maintenance cycle. Example: `/pin 7`. |
 | `/unpin <id>` | ✓ | ✓ | Remove the pin from a memory. Example: `/unpin 7`. |
@@ -39,7 +39,7 @@ Some commands are available in both the **TUI** (launched with `-tui`) and the *
 
 | Command | CLI | TUI | Description |
 |---|---|---|---|
-| `/jobs` | ✓ | — | List all jobs with id, status, and title. |
+| `/jobs` | ✓ | panel | List all jobs with id, status, and title. (TUI: open the threads panel with Ctrl+T — the same data is shown as a live jobs/tasks tree.) |
 
 ---
 
@@ -47,8 +47,8 @@ Some commands are available in both the **TUI** (launched with `-tui`) and the *
 
 | Command | CLI | TUI | Description |
 |---|---|---|---|
-| `/tools` | ✓ | — | List custom tools (not built-in tools). Shows name, description, and whether each tool is enabled. |
-| `/skills` | ✓ | — | List skills — reusable instruction blocks the AI can load. |
+| `/tools` | ✓ | ✓ | List custom tools (not built-in tools). Shows name, description, and whether each tool is enabled. |
+| `/skills` | ✓ | ✓ | List skills — reusable instruction blocks the AI can load. |
 
 ---
 

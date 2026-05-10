@@ -247,6 +247,52 @@ func defaultCommands() []Command {
 			},
 		},
 		{
+			Name:        "tools",
+			Description: "List custom tools.",
+			Handler: func(m *model) tea.Cmd {
+				customTools, err := m.db.Tools.List()
+				if err != nil {
+					m.addToast("/tools: "+err.Error(), toastError)
+					return nil
+				}
+				if len(customTools) == 0 {
+					m.appendSystem("no custom tools")
+					return nil
+				}
+				var sb strings.Builder
+				for _, t := range customTools {
+					status := "on"
+					if !t.IsEnabled {
+						status = "off"
+					}
+					fmt.Fprintf(&sb, "[%s] %s — %s\n", status, t.Name, t.Description)
+				}
+				m.appendSystem(strings.TrimRight(sb.String(), "\n"))
+				return nil
+			},
+		},
+		{
+			Name:        "skills",
+			Description: "List skills.",
+			Handler: func(m *model) tea.Cmd {
+				skills, err := m.db.Skills.List()
+				if err != nil {
+					m.addToast("/skills: "+err.Error(), toastError)
+					return nil
+				}
+				if len(skills) == 0 {
+					m.appendSystem("no skills")
+					return nil
+				}
+				var sb strings.Builder
+				for _, s := range skills {
+					fmt.Fprintf(&sb, "%s — %s\n", s.Name, s.Description)
+				}
+				m.appendSystem(strings.TrimRight(sb.String(), "\n"))
+				return nil
+			},
+		},
+		{
 			Name:        "dream",
 			Description: "Manually trigger a dream-pass (maintenance cycle). Runs in the background; toast on completion.",
 			Handler: func(m *model) tea.Cmd {
