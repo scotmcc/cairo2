@@ -15,17 +15,17 @@ function formatTime(unixSeconds: number): string {
   return `${yyyy}-${mm}-${dd} ${HH}:${MM}`;
 }
 
-async function fetchCairo<T = void>(method: string, path: string, body?: unknown): Promise<T> {
+async function fetchCairo<T = void>(method: string, apiPath: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (CAIRO_HTTP_TOKEN) headers['Authorization'] = `Bearer ${CAIRO_HTTP_TOKEN}`;
-  const res = await fetch(`${CAIRO_HTTP_URL}${path}`, {
+  const res = await fetch(`${CAIRO_HTTP_URL}${apiPath}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Cairo HTTP ${method} ${path} failed: ${res.status} ${text}`);
+    throw new Error(`Cairo HTTP ${method} ${apiPath} failed: ${res.status} ${text}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
