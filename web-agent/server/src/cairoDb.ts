@@ -3,6 +3,74 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+const CAIRO_HTTP_URL = process.env.CAIRO_HTTP_URL ?? 'http://localhost:11434';
+const CAIRO_HTTP_TOKEN = process.env.CAIRO_HTTP_TOKEN;
+
+function formatTime(unixSeconds: number): string {
+  const d = new Date(unixSeconds * 1000);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const HH = String(d.getHours()).padStart(2, '0');
+  const MM = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${HH}:${MM}`;
+}
+
+async function fetchCairo<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (CAIRO_HTTP_TOKEN) headers['Authorization'] = `Bearer ${CAIRO_HTTP_TOKEN}`;
+  const res = await fetch(`${CAIRO_HTTP_URL}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Cairo HTTP ${method} ${path} failed: ${res.status} ${text}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+interface RawSession {
+  id: number;
+  name: string;
+  insight: string;
+  role: string;
+  cwd: string;
+  last_active: number;
+}
+
+function normalizeSnapshot(
+  raw: {
+    config?: Record<string, string>;
+    roles?: CairoRole[];
+    considerAspects?: CairoConsiderAspect[];
+  },
+  dbPath: string,
+): CairoDbSnapshot {
+  return {
+    dbPath,
+    config: raw.config ?? {},
+    roles: raw.roles ?? [],
+    considerAspects: raw.considerAspects ?? [],
+  };
+}
+
+function normalizeSessionsResult(raw: RawSession[], dbPath: string): CairoSessionsResult {
+  return {
+    dbPath,
+    sessions: raw.map((s) => ({
+      id: s.id,
+      name: s.name ?? '',
+      insight: s.insight ?? '',
+      role: s.role ?? '',
+      cwd: s.cwd ?? '',
+      lastActive: formatTime(s.last_active),
+    })),
+  };
+}
+
 export interface CairoRole {
   name: string;
   description: string;
