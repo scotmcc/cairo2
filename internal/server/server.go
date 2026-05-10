@@ -69,6 +69,15 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/sessions/{id}", s.auth(s.handleSessionsGet))
 	s.mux.HandleFunc("GET /api/sessions/{id}/messages", s.auth(s.handleSessionsMessages))
 	s.mux.HandleFunc("GET /api/metrics", s.auth(s.handleMetrics))
+
+	// Phase 3.1 — mutation endpoints.
+	s.mux.HandleFunc("PUT /api/config/{key}", s.auth(s.handleConfigPut))
+	s.mux.HandleFunc("PATCH /api/sessions/{id}", s.auth(s.handleSessionsPatch))
+	s.mux.HandleFunc("DELETE /api/sessions/{id}", s.auth(s.handleSessionsDelete))
+	s.mux.HandleFunc("PATCH /api/roles/{name}", s.auth(s.handleRolesPatch))
+	s.mux.HandleFunc("PUT /api/consider/aspects/{name}", s.auth(s.handleAspectPut))
+	s.mux.HandleFunc("PATCH /api/consider/aspects/{name}", s.auth(s.handleAspectPatch))
+	s.mux.HandleFunc("DELETE /api/consider/aspects/{name}", s.auth(s.handleAspectDelete))
 }
 
 // Serve accepts requests on ln until ctx is done.
