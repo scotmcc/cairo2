@@ -54,61 +54,74 @@ const (
 
 // Event carries a typed payload from the agent loop to subscribers.
 type Event struct {
-	Type    EventType
-	Payload any
+	Type    EventType `json:"type"`
+	Payload any       `json:"payload"`
 }
 
 // Payloads — subscribers type-assert Payload based on Type.
 
-type PayloadTokens struct{ Token string }
-type PayloadThinking struct{ Token string }
+type PayloadTokens struct {
+	Token string `json:"token"`
+}
+type PayloadThinking struct {
+	Token string `json:"token"`
+}
 type PayloadToolStart struct {
-	Name string
-	Args map[string]any
-	PID  int // subprocess PID (non-zero for bash; zero for all other tools)
+	Name string         `json:"name"`
+	Args map[string]any `json:"args"`
+	PID  int            `json:"pid"` // subprocess PID (non-zero for bash; zero for all other tools)
 }
 type PayloadToolUpdate struct {
-	Name   string
-	Output string
+	Name   string `json:"name"`
+	Output string `json:"output"`
 }
 type PayloadToolEnd struct {
-	Name    string
-	Result  string
-	IsError bool
+	Name    string `json:"name"`
+	Result  string `json:"result"`
+	IsError bool   `json:"is_error"`
 }
-type PayloadError struct{ Err error }
-type PayloadTurnEnd struct{ HasMore bool } // HasMore = model wants another turn
+type PayloadError struct {
+	Err     error  `json:"-"`
+	Message string `json:"message"`
+}
+type PayloadTurnEnd struct {
+	HasMore bool `json:"has_more"` // HasMore = model wants another turn
+}
 
 // PayloadJobAction carries the job ID for EventJobApprove and EventJobReject.
-type PayloadJobAction struct{ JobID int64 }
+type PayloadJobAction struct {
+	JobID int64 `json:"job_id"`
+}
 
 // Consider event payloads.
-type PayloadConsiderAspectStart struct{ Name string }
+type PayloadConsiderAspectStart struct {
+	Name string `json:"name"`
+}
 type PayloadConsiderAspectEnd struct {
-	Name    string
-	Output  string
-	IsError bool
+	Name    string `json:"name"`
+	Output  string `json:"output"`
+	IsError bool   `json:"is_error"`
 }
 type PayloadConsiderInjected struct {
-	AspectCount int
-	Summary     string
-	ElapsedMs   int64
+	AspectCount int    `json:"aspect_count"`
+	Summary     string `json:"summary"`
+	ElapsedMs   int64  `json:"elapsed_ms"`
 }
 
 // PayloadStepStart is published when a coarse execution step begins.
 // Step is one of: "consider", "llm", "tool", "persist".
 // Detail carries extra context (tool name for "tool", otherwise "").
 type PayloadStepStart struct {
-	Step      string
-	Detail    string
-	StartedAt time.Time
+	Step      string    `json:"step"`
+	Detail    string    `json:"detail"`
+	StartedAt time.Time `json:"started_at"`
 }
 
 // PayloadStepEnd is published when a coarse execution step completes.
 type PayloadStepEnd struct {
-	Step     string
-	Detail   string
-	Duration time.Duration
+	Step     string        `json:"step"`
+	Detail   string        `json:"detail"`
+	Duration time.Duration `json:"duration"`
 }
 
 // Bus is a fan-out event publisher. Subscribers receive all events on a channel.

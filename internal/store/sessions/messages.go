@@ -24,18 +24,18 @@ func int64SliceToAny(ids []int64) []any {
 }
 
 type Message struct {
-	ID            int64
-	SessionID     int64
-	Role          string    // user | assistant | tool
-	Content       string    // raw text or JSON
-	ToolCalls     string    // JSON array, non-empty for assistant messages that call tools
-	ToolName      string    // non-empty for tool result messages
-	ToolID        string    // non-empty for tool result messages
-	InnerVoice    string    // consider summary that framed this message; empty when consider was disabled or didn't fire. Set on user rows only.
-	ToolStatus    string    // "ok" | "error" | "" — tool-result audit (role='tool' rows only). Written by AddTool.
-	ToolLatencyMs int64     // tool call wall-time in ms; tool-result audit (role='tool' rows only). 0 on non-tool rows.
-	ReviewedAt    time.Time // zero when not yet reviewed; non-zero after MarkReviewed.
-	CreatedAt     time.Time
+	ID            int64     `json:"id"`
+	SessionID     int64     `json:"session_id"`
+	Role          string    `json:"role"`            // user | assistant | tool
+	Content       string    `json:"content"`         // raw text or JSON
+	ToolCalls     string    `json:"tool_calls"`      // JSON array, non-empty for assistant messages that call tools
+	ToolName      string    `json:"tool_name"`       // non-empty for tool result messages
+	ToolID        string    `json:"tool_id"`         // non-empty for tool result messages
+	InnerVoice    string    `json:"inner_voice"`     // consider summary that framed this message; empty when consider was disabled or didn't fire. Set on user rows only.
+	ToolStatus    string    `json:"tool_status"`     // "ok" | "error" | "" — tool-result audit (role='tool' rows only). Written by AddTool.
+	ToolLatencyMs int64     `json:"tool_latency_ms"` // tool call wall-time in ms; tool-result audit (role='tool' rows only). 0 on non-tool rows.
+	ReviewedAt    time.Time `json:"reviewed_at"`     // zero when not yet reviewed; non-zero after MarkReviewed.
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // selectMessageCols is the column list used by every SELECT that scans into

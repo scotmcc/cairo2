@@ -230,8 +230,10 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 			// so the model sees what went wrong on the next turn and can
 			// adapt — narrow scope, summarize, switch tools.
 			if err != nil && ctx.Err() == nil && isLLMServerError(err) {
+				wrapped := fmt.Errorf("retrying without format constraint: %w", err)
 				cfg.bus.Publish(Event{Type: EventError, Payload: PayloadError{
-					Err: fmt.Errorf("retrying without format constraint: %w", err),
+					Err:     wrapped,
+					Message: wrapped.Error(),
 				}})
 				retryOpts := chatOpts
 				retryOpts.Format = nil
@@ -266,7 +268,7 @@ func runLoop(ctx context.Context, cfg loopConfig) error {
 					cfg.bus.Publish(Event{Type: EventTurnEnd, Payload: PayloadTurnEnd{}})
 					return nil
 				}
-				cfg.bus.Publish(Event{Type: EventError, Payload: PayloadError{Err: err}})
+				cfg.bus.Publish(Event{Type: EventError, Payload: PayloadError{Err: err, Message: err.Error()}})
 				cfg.bus.Publish(Event{Type: EventTurnEnd, Payload: PayloadTurnEnd{}})
 				return err
 			}
