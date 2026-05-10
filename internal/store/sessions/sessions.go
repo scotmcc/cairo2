@@ -124,6 +124,13 @@ func (q *SessionQ) Rename(id int64, name string) error {
 	return err
 }
 
+// Count returns the total number of sessions.
+func (q *SessionQ) Count() (int, error) {
+	var n int
+	err := q.db.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&n)
+	return n, err
+}
+
 // Delete removes a session and — via ON DELETE CASCADE declared on every
 // table that references sessions(id) — sweeps its messages, summaries,
 // facts, jobs, and transitively the jobs' tasks and task_artifacts.

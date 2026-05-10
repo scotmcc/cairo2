@@ -394,6 +394,32 @@ func (q *MessageQ) SessionMessageIDs(sessionIDs []int64) ([]int64, error) {
 	return ids, rows.Err()
 }
 
+// PageForSession returns up to limit messages for sessionID ordered id DESC
+// (newest-first). Pass before=0 to start from the newest message; pass a
+// message id to get the next page of older messages (id < before).
+func (q *MessageQ) PageForSession(sessionID int64, limit int, before int64) ([]*Message, error) {
+	rows, err := q.db.Query(
+		`SELECT `+selectMessageCols+`
+		 FROM messages
+		 WHERE session_id = ?
+		   AND (? = 0 OR id < ?)
+		 ORDER BY id DESC LIMIT ?`,
+		sessionID, before, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Message
+	for rows.Next() {
+		m, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // MarkReviewed stamps reviewed_at on the given message IDs. Used by the
 // dream-pass to mark the full session window as reviewed so future passes
 // skip already-scanned messages.

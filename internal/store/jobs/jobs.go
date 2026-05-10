@@ -353,6 +353,13 @@ func (q *JobQ) ResolveAndUpdateJobStatus(jobID int64) error {
 	return q.SetStatus(jobID, newStatus)
 }
 
+// Count returns the total number of jobs.
+func (q *JobQ) Count() (int, error) {
+	var n int
+	err := q.db.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&n)
+	return n, err
+}
+
 // CountRunning returns the number of jobs currently in status='running'.
 // Used by the TUI's status bar to show active background job count.
 func (q *JobQ) CountRunning() (int, error) {

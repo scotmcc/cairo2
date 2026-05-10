@@ -65,6 +65,37 @@ func (q *ConsiderAspectQ) SetEnabled(name string, enabled bool) error {
 	return err
 }
 
+// Upsert inserts or replaces an aspect by name, stamping source='user' so
+// seedConsiderAspects does not overwrite user edits on next Open.
+func (q *ConsiderAspectQ) Upsert(name, traits string, enabled bool, position int) error {
+	v := 0
+	if enabled {
+		v = 1
+	}
+	_, err := q.db.Exec(
+		`INSERT INTO consider_aspects(name, traits, enabled, position, source)
+		 VALUES(?, ?, ?, ?, 'user')
+		 ON CONFLICT(name) DO UPDATE SET
+		   traits=excluded.traits, enabled=excluded.enabled,
+		   position=excluded.position, source='user'`,
+		name, traits, v, position)
+	return err
+}
+
+// Get returns a single aspect by name. Returns sql.ErrNoRows when not found.
+func (q *ConsiderAspectQ) Get(name string) (*ConsiderAspect, error) {
+	var a ConsiderAspect
+	var enabled int
+	err := q.db.QueryRow(
+		`SELECT name, traits, enabled, position FROM consider_aspects WHERE name = ?`, name,
+	).Scan(&a.Name, &a.Traits, &enabled, &a.Position)
+	if err != nil {
+		return nil, err
+	}
+	a.Enabled = enabled != 0
+	return &a, nil
+}
+
 // Delete removes an aspect by name.
 func (q *ConsiderAspectQ) Delete(name string) error {
 	_, err := q.db.Exec(`DELETE FROM consider_aspects WHERE name = ?`, name)
