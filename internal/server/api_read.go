@@ -90,7 +90,7 @@ func (s *Server) handleSessionsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess, err := s.db.Sessions.Get(id)
-	if err == sql.ErrNoRows || (err == nil && sess == nil) {
+	if err == sql.ErrNoRows {
 		writeJSONError(w, http.StatusNotFound, "session not found")
 		return
 	}

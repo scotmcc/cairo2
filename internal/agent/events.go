@@ -125,6 +125,13 @@ func (b *Bus) DropCount() int64 {
 	return b.dropCount.Load()
 }
 
+// SubscriberCount returns the current number of active subscribers.
+func (b *Bus) SubscriberCount() int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return len(b.subs)
+}
+
 // Subscribe returns a receive-only channel and an unsubscribe function.
 // The channel is buffered (512) so a slow subscriber doesn't stall the agent.
 func (b *Bus) Subscribe() (<-chan Event, func()) {

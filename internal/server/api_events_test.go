@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -51,8 +52,10 @@ func TestEventsConnectAndReceive(t *testing.T) {
 		srv.mux.ServeHTTP(rr, req)
 	}()
 
-	// Give handler time to subscribe before publishing.
-	time.Sleep(10 * time.Millisecond)
+	// Wait deterministically for the handler to subscribe before publishing.
+	for fa.bus.SubscriberCount() < 1 {
+		runtime.Gosched()
+	}
 
 	fa.bus.Publish(agent.Event{Type: agent.EventAgentStart})
 
@@ -90,7 +93,9 @@ func TestEventsFiltersTokens(t *testing.T) {
 		srv.mux.ServeHTTP(rr, req)
 	}()
 
-	time.Sleep(10 * time.Millisecond)
+	for fa.bus.SubscriberCount() < 1 {
+		runtime.Gosched()
+	}
 
 	fa.bus.Publish(agent.Event{
 		Type:    agent.EventTokens,
