@@ -29,7 +29,7 @@ Returns the full runtime configuration: all config key/value pairs, all roles, a
     }
     // ... array of all roles
   ],
-  "considerAspects": [
+  "consider_aspects": [
     {
       "name": "curiosity",  // string
       "traits": "...",      // string — free-text prompt fragment

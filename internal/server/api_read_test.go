@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
@@ -66,7 +67,7 @@ func TestConfigSnapshotOK(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	for _, key := range []string{"config", "roles", "considerAspects"} {
+	for _, key := range []string{"config", "roles", "consider_aspects"} {
 		if _, ok := body[key]; !ok {
 			t.Errorf("missing key %q in snapshot", key)
 		}
@@ -146,10 +147,24 @@ func TestMetricsOK(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	for _, key := range []string{"sessions", "memories", "jobs"} {
+	wantKeys := []string{
+		"sessions", "turns", "memories", "pinned_memories",
+		"jobs", "tools", "skills", "db_size_bytes", "captured_at",
+	}
+	if len(body) != len(wantKeys) {
+		t.Errorf("expected %d keys in metrics, got %d: %v", len(wantKeys), len(body), body)
+	}
+	for _, key := range wantKeys {
 		if _, ok := body[key]; !ok {
 			t.Errorf("missing key %q in metrics", key)
 		}
+	}
+	capturedAt, ok := body["captured_at"].(string)
+	if !ok || capturedAt == "" {
+		t.Fatalf("captured_at missing or not a string: %v", body["captured_at"])
+	}
+	if _, err := time.Parse(time.RFC3339, capturedAt); err != nil {
+		t.Errorf("captured_at %q does not parse as RFC 3339: %v", capturedAt, err)
 	}
 }
 

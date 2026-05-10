@@ -160,6 +160,13 @@ func (q *MemoryQ) Count() (int, error) {
 	return n, err
 }
 
+// CountPinned returns the number of pinned, non-deleted memories.
+func (q *MemoryQ) CountPinned() (int, error) {
+	var n int
+	err := q.db.QueryRow(`SELECT COUNT(*) FROM memories WHERE pinned_at IS NOT NULL AND deleted_at IS NULL`).Scan(&n)
+	return n, err
+}
+
 // DimBreakdown reports how many stored memories exist at each embedding
 // dimension, derived cheaply from blob byte length (float32 => 4 bytes).
 // Useful for diagnosing a silent embed_model swap — if the map has more

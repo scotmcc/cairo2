@@ -43,7 +43,7 @@ describe('cairoDb HTTP adapter', () => {
       'GET /api/config/snapshot': {
         config: { llm_model: 'llama3' },
         roles: [{ name: 'coder', description: '', model: 'llama3', think: '', basePromptKey: '', tools: '' }],
-        considerAspects: [],
+        consider_aspects: [],
       },
     });
     process.env.CAIRO_HTTP_URL = server.url;

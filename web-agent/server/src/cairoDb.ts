@@ -44,7 +44,7 @@ function normalizeSnapshot(
   raw: {
     config?: Record<string, string>;
     roles?: CairoRole[];
-    considerAspects?: CairoConsiderAspect[];
+    consider_aspects?: CairoConsiderAspect[];
   },
   dbPath: string,
 ): CairoDbSnapshot {
@@ -52,7 +52,7 @@ function normalizeSnapshot(
     dbPath,
     config: raw.config ?? {},
     roles: raw.roles ?? [],
-    considerAspects: raw.considerAspects ?? [],
+    considerAspects: raw.consider_aspects ?? [],
   };
 }
 
@@ -128,7 +128,7 @@ export async function readSnapshot(dbPath: string): Promise<CairoDbSnapshot> {
   const raw = await fetchCairo<{
     config?: Record<string, string>;
     roles?: CairoRole[];
-    considerAspects?: CairoConsiderAspect[];
+    consider_aspects?: CairoConsiderAspect[];
   }>('GET', '/api/config/snapshot');
   return normalizeSnapshot(raw, dbPath);
 }
@@ -155,7 +155,7 @@ export async function setConfig(dbPath: string, key: string, value: string): Pro
   const raw = await fetchCairo<{
     config?: Record<string, string>;
     roles?: CairoRole[];
-    considerAspects?: CairoConsiderAspect[];
+    consider_aspects?: CairoConsiderAspect[];
   }>('GET', '/api/config/snapshot');
   return normalizeSnapshot(raw, dbPath);
 }
@@ -170,7 +170,7 @@ export async function setRole(
   const raw = await fetchCairo<{
     config?: Record<string, string>;
     roles?: CairoRole[];
-    considerAspects?: CairoConsiderAspect[];
+    consider_aspects?: CairoConsiderAspect[];
   }>('GET', '/api/config/snapshot');
   return normalizeSnapshot(raw, dbPath);
 }
@@ -185,7 +185,7 @@ export async function upsertAspect(
   const raw = await fetchCairo<{
     config?: Record<string, string>;
     roles?: CairoRole[];
-    considerAspects?: CairoConsiderAspect[];
+    consider_aspects?: CairoConsiderAspect[];
   }>('GET', '/api/config/snapshot');
   return normalizeSnapshot(raw, dbPath);
 }
@@ -195,7 +195,7 @@ export async function deleteAspect(dbPath: string, name: string): Promise<CairoD
   const raw = await fetchCairo<{
     config?: Record<string, string>;
     roles?: CairoRole[];
-    considerAspects?: CairoConsiderAspect[];
+    consider_aspects?: CairoConsiderAspect[];
   }>('GET', '/api/config/snapshot');
   return normalizeSnapshot(raw, dbPath);
 }
@@ -205,7 +205,7 @@ export async function setAspectEnabled(dbPath: string, name: string, enabled: bo
   const raw = await fetchCairo<{
     config?: Record<string, string>;
     roles?: CairoRole[];
-    considerAspects?: CairoConsiderAspect[];
+    consider_aspects?: CairoConsiderAspect[];
   }>('GET', '/api/config/snapshot');
   return normalizeSnapshot(raw, dbPath);
 }

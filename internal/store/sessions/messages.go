@@ -129,6 +129,15 @@ func (q *MessageQ) UnsummarizedForSession(sessionID int64) ([]*Message, error) {
 	return out, rows.Err()
 }
 
+// CountByRole returns the total number of messages with the given role across
+// all sessions. Used by the metrics endpoint for the "turns" count
+// (role='user'). Generic over role so future needs can reuse it.
+func (q *MessageQ) CountByRole(role string) (int, error) {
+	var n int
+	err := q.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE role = ?`, role).Scan(&n)
+	return n, err
+}
+
 // CountForSession returns the total number of messages in a session (all
 // roles, summarized or not). Used by the session browser UI for at-a-glance
 // "how much has been said here" display.

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -39,9 +40,9 @@ func (s *Server) handleConfigSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"config":          cfg,
-		"roles":           roles,
-		"considerAspects": aspects,
+		"config":           cfg,
+		"roles":            roles,
+		"consider_aspects": aspects,
 	})
 }
 
@@ -134,8 +135,25 @@ func (s *Server) handleSessionsMessages(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(msgs)
 }
 
+type metricsResponse struct {
+	Sessions       int    `json:"sessions"`
+	Turns          int    `json:"turns"`
+	Memories       int    `json:"memories"`
+	PinnedMemories int    `json:"pinned_memories"`
+	Jobs           int    `json:"jobs"`
+	Tools          int    `json:"tools"`
+	Skills         int    `json:"skills"`
+	DBSizeBytes    int64  `json:"db_size_bytes"`
+	CapturedAt     string `json:"captured_at"`
+}
+
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	sc, err := s.db.Sessions.Count()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	tc, err := s.db.Messages.CountByRole("user")
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -145,16 +163,47 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	pmc, err := s.db.Memories.CountPinned()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	jc, err := s.db.Jobs.Count()
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	toolCount, err := s.db.Tools.Count()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	skillCount, err := s.db.Skills.Count()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// db_size_bytes reports the main DB file size via os.Stat. The WAL sidecar
+	// (cairo.db-wal) is excluded; reported size can be smaller than the total
+	// on-disk footprint during heavy write activity. Acceptable for a v1 "DB on
+	// disk" indicator. Empty DBPath (some construction paths) yields 0.
+	var dbSize int64
+	if s.opts.DBPath != "" {
+		if info, statErr := os.Stat(s.opts.DBPath); statErr == nil {
+			dbSize = info.Size()
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]int{
-		"sessions": sc,
-		"memories": mc,
-		"jobs":     jc,
+	_ = json.NewEncoder(w).Encode(metricsResponse{
+		Sessions:       sc,
+		Turns:          tc,
+		Memories:       mc,
+		PinnedMemories: pmc,
+		Jobs:           jc,
+		Tools:          toolCount,
+		Skills:         skillCount,
+		DBSizeBytes:    dbSize,
+		CapturedAt:     time.Now().UTC().Format(time.RFC3339),
 	})
 }
 

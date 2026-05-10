@@ -92,6 +92,13 @@ func (q *CustomToolQ) Delete(name string) error {
 	return err
 }
 
+// Count returns the total number of custom tools (all enable states).
+func (q *CustomToolQ) Count() (int, error) {
+	var n int
+	err := q.db.QueryRow(`SELECT COUNT(*) FROM custom_tools`).Scan(&n)
+	return n, err
+}
+
 func scanCustomTool(row scanner) (*CustomTool, error) {
 	var t CustomTool
 	var createdAt, updatedAt int64

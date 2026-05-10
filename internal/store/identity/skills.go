@@ -87,6 +87,13 @@ func (q *SkillQ) Delete(name string) error {
 	return err
 }
 
+// Count returns the total number of skills.
+func (q *SkillQ) Count() (int, error) {
+	var n int
+	err := q.db.QueryRow(`SELECT COUNT(*) FROM skills`).Scan(&n)
+	return n, err
+}
+
 // Search returns the top-k skills by cosine similarity to the query embedding.
 // Skips rows whose embed_model differs from queryModel.
 func (q *SkillQ) Search(query []float32, queryModel string, k int) ([]*Skill, error) {
