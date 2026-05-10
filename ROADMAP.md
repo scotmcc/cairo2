@@ -378,25 +378,35 @@ kill %1 %2
 **Crew notes:**  
 See `docs/architecture/research/server-api-surface.md` for the exact proposed shapes. Each handler is ~30–60 lines delegating to store sub-packages.
 
-**Success criteria:**
+**Success criteria** (verified live 2026-05-10):
 ```bash
-cairo serve --port 11434 --auth=false &
-sleep 2
+# Use a non-LLM port to avoid colliding with a local Ollama on 11434
+cairo serve --port 18080 --auth=false &
+SERVE_PID=$!
+sleep 3
 
-curl -s http://localhost:11434/api/health | jq .
-curl -s http://localhost:11434/api/config/snapshot | jq '.roles | keys'
-curl -s http://localhost:11434/api/sessions | jq 'length'
-curl -s http://localhost:11434/api/metrics | jq .
+curl -s http://localhost:18080/api/health | jq .
+# {ok, version, uptime_seconds, db_path}
 
-# Modify a config value
-curl -s -X PUT http://localhost:11434/api/config/llm_model \
+curl -s http://localhost:18080/api/config/snapshot | jq '.roles | map(.name)'
+# ["coder","dream","orchestrator","planner","researcher","reviewer","thinking_partner"]
+
+curl -s http://localhost:18080/api/sessions | jq 'length'
+# (count of sessions — bare array, not wrapped)
+
+curl -s http://localhost:18080/api/metrics | jq .
+# {sessions, memories, jobs}
+
+# Modify a config value (raw JSON value, not a {value:...} wrapper)
+curl -s -X PUT http://localhost:18080/api/config/llm_model \
   -H 'Content-Type: application/json' \
   -d '"llama3.2"' | jq .
+# {key:"llm_model", value:"llama3.2"}
 
-curl -s http://localhost:11434/api/config/snapshot | jq '.config.llm_model'
+curl -s http://localhost:18080/api/config/snapshot | jq '.config.llm_model'
 # "llama3.2"
 
-kill %1
+kill $SERVE_PID
 ```
 
 ---
