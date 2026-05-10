@@ -494,7 +494,43 @@ diff /tmp/cairo-tui-cmds.txt /tmp/cairo2-tui-cmds.txt
 
 ---
 
-> **Milestone 3 demo checkpoint:** Web UI loads, sessions list, config editable — all without SQLite direct reads. `Message` and `PayloadError` shapes are canonical. TUI commands at parity with line-CLI (or panels documented as the equivalent). Request Scot web UI + TUI verification.
+### Phase 3.5 — Metrics Expansion + snake_case Completion (discovered during UI audits, 2026-05-10)
+
+**Action:** Two small cairo-ui-blocking fixes shipped together. Expands `/api/metrics` from 3 fields to the 9-field contract drafted in cairo-ui's `docs/cairo-api-requests/metrics.md`, and finishes Phase 3.3's snake_case mandate by renaming the lone `considerAspects` outlier to `consider_aspects`. Coordinated change across cairo2 and web-agent.
+
+**Resolves:**
+- **3.5a — metrics 9 fields.** Typed JSON response (replaces `map[string]int`) with snake_case keys: `sessions`, `turns`, `memories`, `pinned_memories`, `jobs`, `tools` (custom only — excludes built-ins), `skills`, `db_size_bytes`, `captured_at` (RFC 3339 UTC). New Q-methods: `MessageQ.CountByRole`, `MemoryQ.CountPinned`, `CustomToolQ.Count`, `SkillQ.Count`. `db_size_bytes` from `os.Stat(s.DBPath).Size()` (WAL excluded; acceptable for v1).
+- **3.5b — snake_case rename.** `internal/server/api_read.go` emits `consider_aspects` in `/api/config/snapshot`. `web-agent/server/src/cairoDb.ts` Raw type literals and normalizers updated to read the snake_case key; web-agent's external camelCase DTO to its browser is unchanged.
+
+**Crew notes:**
+"Turn" = user message (`COUNT(*) FROM messages WHERE role='user'`). Unblocks M7 (cairo-ui side) — the metrics expansion is the only cairo2-side prerequisite for `HttpCairoClient` wiring.
+
+**Success criteria:**
+```bash
+cairo serve --port 18080 --auth=false &
+SERVE_PID=$!
+sleep 3
+
+# 9 fields
+curl -s http://localhost:18080/api/metrics | jq 'keys | length'
+# 9
+
+# Field names match contract
+curl -s http://localhost:18080/api/metrics | jq 'keys | sort'
+# ["captured_at","db_size_bytes","jobs","memories","pinned_memories","sessions","skills","tools","turns"]
+
+# snake_case rename live
+curl -s http://localhost:18080/api/config/snapshot | jq '.consider_aspects | type'
+# "array"
+curl -s http://localhost:18080/api/config/snapshot | jq '.considerAspects'
+# null
+
+kill $SERVE_PID
+```
+
+---
+
+> **Milestone 3 demo checkpoint:** Web UI loads, sessions list, config editable — all without SQLite direct reads. `Message` and `PayloadError` shapes are canonical. `/api/metrics` returns 9 fields, all snake_case. `consider_aspects` replaces `considerAspects` everywhere. TUI commands at parity with line-CLI (or panels documented as the equivalent). Request Scot web UI + TUI verification.
 
 ---
 
@@ -912,53 +948,120 @@ kill %1
 
 ## Milestone 7 — cairo-ui Integration
 
-> The Blazor enterprise UI is wired to real data. Users can select agents, chat, and see the fleet. ZT gates are enforced from browser to agent.
+> The Blazor dashboard talks to a real cairo over HTTP. The `HttpCairoClient` stub is gone. v1 scope: chat bubble + metrics dashboard, local `cairo serve`, no registry hop. Future expansions (sessions, fleet admin) deferred until cairo-ui drafts contracts.
 
-*(Phases 7.1–7.4 are Blazor/.NET work — tracked here for sequencing, implemented in the cairo-ui repo.)*
+**Repo split:** M7 phases ship in the **cairo-ui repo** (`/home/scot/cairo-ui`), not cairo2. Tracked here for sequencing because they consume cairo2's HTTP surface. cairo2-side prerequisite (metrics expansion) lives in Phase 3.5.
+
+**Rework history:** rescoped 2026-05-10 against UI-C audit. Old M7 (`Cairo.Client.Registry` + `Cairo.Client.Agent` classlibs, agent selector, fleet page, registry routing) did not match cairo-ui's actual minimum surface (`ICairoClient` = 3 methods, no registry consumer, no fleet admin in v1 per `project-vision.md`). Old phases archived in `.claude/jobs/m7-rework/plan.md`.
 
 ---
 
-### Phase 7.1 — Cairo.Client.Registry Classlib
+### Phase 7.1 — Config + DI Toggle *(cairo-ui side)*
 
-**Resolves:** `Cairo.Client.Registry` — typed C# client for cairo-registry HTTP API (agent list, health, department management).
+**Action:** Add `Cairo:BaseUrl` and `Cairo:Token` to `appsettings.json` (+ `appsettings.Development.json`). Update DI registration in `src/App/Web/Program.cs` to select `HttpCairoClient` when `Cairo:BaseUrl` is set, falling back to `MockCairoClient` otherwise.
+
+**Resolves:**
+- `Cairo:BaseUrl` and `Cairo:Token` config keys defined (Token may be empty/null → no auth header sent).
+- `AddHttpClient<ICairoClient, HttpCairoClient>()` registration when BaseUrl is set; `AddSingleton<ICairoClient, MockCairoClient>()` fallback otherwise.
+- Documented run recipe in `cairo-ui/README.md`: how to point at a local `cairo serve`.
+
+**Crew notes:** cairo-ui repo. Zero cairo2-side work. Mock stays the default so offline dev and tests are unchanged.
 
 **Success criteria:**
 ```bash
-# From cairo-ui integration test
-dotnet test cairo-ui/Cairo.Client.Registry.Tests \
-  -- --registry-url http://localhost:8080
-# All tests pass against a live registry
+# Default: mock still wired (dashboard renders canned data)
+cd /home/scot/cairo-ui/src/App/Web && dotnet run
+
+# With BaseUrl: HttpCairoClient is selected (will throw NotImplementedException
+# until 7.2 — that's the signal DI worked)
+Cairo__BaseUrl=http://localhost:18080 dotnet run
 ```
 
 ---
 
-### Phase 7.2 — Cairo.Client.Agent Classlib
+### Phase 7.2 — `HttpCairoClient` Implementation *(cairo-ui side)*
 
-**Resolves:** `Cairo.Client.Agent` — typed C# client for agent HTTP API (chat, sessions, config, metrics).
+**Action:** Replace the `NotImplementedException` stub in `src/Lib/Cairo/HttpCairoClient.cs` with a real implementation of all three `ICairoClient` methods against `POST /api/chat` and `GET /api/metrics`.
+
+**Resolves:**
+- `SendAsync(ChatRequest, ct)` → `POST /api/chat`, `{message, context:[], stream:false}`. `ChatContext` (UserId/Page) prepended as `[user=<UserId>] [page=<Page>] ` prefix in v1 (defer cairo2-side `app_context` type to a future phase).
+- `SendStreamAsync(ChatRequest, ct)` → `POST /api/chat`, `stream:true`. Line-buffered SSE reader: strip `data: ` prefix; on `[DONE]` complete the enumerable; otherwise deserialize `{token: "..."}` and yield. Returned as `IAsyncEnumerable<string>` consumed directly by the Blazor Server component — no SignalR in v1.
+- `GetMetricsAsync(ct)` → `GET /api/metrics`. Private DTO with `[JsonPropertyName]` attributes for snake_case ↔ PascalCase; map to public `MetricsSnapshot`.
+- Bearer auth: same token as `cairo serve --auth` issues (`cairo token` output). `Authorization: Bearer <token>` only when `Cairo:Token` is non-empty.
+- Unit tests with `HttpMessageHandler` fake: happy path + cancellation + 401 + malformed SSE frame.
+
+**Crew notes:** cairo-ui repo. Depends on **Phase 3.5** (the 9-field metrics endpoint and `consider_aspects` rename) + **Phase 7.1**. The snake_case ↔ PascalCase mapping is per-property (`JsonPropertyName`) rather than a global naming policy — keeps the policy boundary explicit.
 
 **Success criteria:**
 ```bash
-dotnet test cairo-ui/Cairo.Client.Agent.Tests \
-  -- --agent-url http://localhost:11434
+cd /home/scot/cairo-ui
+dotnet test src/Lib.Cairo.Tests
+# All HttpCairoClient unit tests pass
 ```
 
 ---
 
-### Phase 7.3 — Agent Selector + Fleet Page
+### Phase 7.3 — Live Smoke *(cairo-ui side, cairo2 running)*
 
-**Resolves:** Agent dropdown UI (personal / departmental / enterprise). Fleet management page (admin). Department management page.
+**Action:** Run the cairo-ui dashboard and "Ask Selene" bubble against a real local `cairo serve --auth=false`. Verify metric cards populate with real counts from `~/.cairo/cairo.db` and the chat bubble streams real tokens.
 
-**Success criteria:** Scot loads the enterprise UI, sees agents in the dropdown, can select one. Fleet page shows node health. (TUI/UI verification requested.)
+**Resolves:**
+- Dashboard shows real numbers (not Mock's canned values).
+- "Ask Selene" bubble streams a token-by-token response from the local cairo agent.
+- Run recipe documented.
+
+**Crew notes:** The M7 "moment of truth" — first time .NET stack talks to the Go stack over HTTP. Manual verification with Scot at the screen; no automated CI for this phase.
+
+**Success criteria:**
+```bash
+# Terminal 1
+cairo serve --port 18080 --auth=false
+
+# Terminal 2
+cd /home/scot/cairo-ui/src/App/Web
+Cairo__BaseUrl=http://localhost:18080 dotnet run
+
+# Manual: open the dashboard. Metric cards match local DB. "Ask Selene" streams a real reply.
+```
 
 ---
 
-### Phase 7.4 — Enterprise Chat Surface
+### Phase 7.4 — Auth-On Smoke *(cairo-ui side, cairo2 running)*
 
-**Resolves:** `HttpCairoClient.SendAsync` + `SendStreamAsync` + `GetMetricsAsync`. Chat works end-to-end from browser through registry to agent and back.
+**Action:** Repeat 7.3 against `cairo serve --auth` with a real bearer token. Verifies the optional `Cairo:Token` path and 401 handling.
 
-**Success criteria:** Scot sends a chat message from the Blazor UI, gets a streamed response from their local cairo agent via registry routing. (UI verification requested.)
+**Resolves:**
+- `cairo token` output usable as `Cairo:Token`.
+- 401 from cairo surfaces as a clear UX in the bubble (not a silent hang).
 
-> **Milestone 7 demo checkpoint:** Full enterprise demo — browser → Blazor UI → registry → local agent → streamed response. The diagram is alive.
+**Crew notes:** Small follow-on to 7.3. If 7.2's error handling already covers 401 cleanly, this is mostly config + manual test.
+
+**Success criteria:**
+```bash
+TOKEN=$(cairo token)
+cairo serve --port 18080 --auth &
+
+cd /home/scot/cairo-ui/src/App/Web
+Cairo__BaseUrl=http://localhost:18080 Cairo__Token=$TOKEN dotnet run
+
+# Manual: still works end-to-end. Then unset token, restart, verify a clear 401 message in the bubble.
+```
+
+---
+
+### Future M7 expansions (anticipated, not pre-designed)
+
+When cairo-ui drafts a new contract in `docs/cairo-api-requests/` and adds a consumer that needs more than `ICairoClient`'s three methods, a new phase is added. Likely candidates, in roughly the order they'll be needed:
+
+- **7.5 — Page-context awareness.** Extend cairo2's `chatContext` to recognize `{type: "app_context", user_id, page, data}`. Drops the crude prefix-prepending from 7.2. Two-side change.
+- **7.6 — Sessions surface.** `GET /api/sessions`, `GET /api/sessions/:id`, `DELETE /api/sessions/:id`. Adds session-list and session-detail Blocs on the cairo-ui side. Requires a drafted contract.
+- **7.7+ — Roles, aspects, config, fleet.** Each gets its own phase when cairo-ui drafts the contract and adds the consumer. Do not pre-design.
+
+These are deferred until cairo-ui drives them, per the two-instance development model in `cairo-ui/notes/project-vision.md`.
+
+---
+
+> **Milestone 7 demo checkpoint:** Browser loads cairo-ui dashboard. Metric cards show real counts from local cairo. "Ask Selene" bubble streams a real token-by-token response from the local agent. Same flow works with `cairo serve --auth` and a bearer token. The .NET ↔ Go bridge is alive.
 
 ---
 
