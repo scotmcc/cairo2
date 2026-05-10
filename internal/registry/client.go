@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +16,10 @@ import (
 
 	"github.com/scotmcc/cairo2/internal/protocol"
 )
+
+// ErrRevoked is returned by Register when the registry responds with 403,
+// indicating the agent has been revoked and should not retry.
+var ErrRevoked = errors.New("registry: agent revoked")
 
 // Register POSTs to the registry and returns the assigned agent_id.
 func Register(ctx context.Context, registryURL, agentID, version string) (string, error) {
@@ -37,6 +42,9 @@ func Register(ctx context.Context, registryURL, agentID, version string) (string
 		return "", fmt.Errorf("post: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusForbidden {
+		return "", ErrRevoked
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("registry returned %s", resp.Status)
 	}
@@ -49,6 +57,7 @@ func Register(ctx context.Context, registryURL, agentID, version string) (string
 
 // HeartbeatLoop re-registers every intervalSeconds until ctx is cancelled.
 // Errors are logged but never returned — heartbeat failures must not crash cairo.
+// If the registry responds with 403 (revoked), the loop stops permanently.
 func HeartbeatLoop(ctx context.Context, registryURL, agentID, version string, intervalSeconds int) {
 	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
 	defer ticker.Stop()
@@ -58,6 +67,10 @@ func HeartbeatLoop(ctx context.Context, registryURL, agentID, version string, in
 			return
 		case <-ticker.C:
 			if _, err := Register(ctx, registryURL, agentID, version); err != nil {
+				if errors.Is(err, ErrRevoked) {
+					log.Printf("registry: agent revoked, heartbeat loop stopping")
+					return
+				}
 				log.Printf("registry: heartbeat failed: %v", err)
 			}
 		}
@@ -76,8 +89,12 @@ func LivenessStream(ctx context.Context, registryURL, agentID string) {
 			return
 		}
 
-		conn, _, err := websocket.Dial(ctx, wsURL, nil)
+		conn, wsResp, err := websocket.Dial(ctx, wsURL, nil)
 		if err != nil {
+			if wsResp != nil && wsResp.StatusCode == http.StatusForbidden {
+				log.Printf("registry: agent revoked, liveness stream stopping")
+				return
+			}
 			log.Printf("registry: dial %s: %v — retrying in 5s", wsURL, err)
 			select {
 			case <-ctx.Done():
