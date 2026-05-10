@@ -439,7 +439,62 @@ sudo mv ${python3_path}.bak $python3_path   # restore
 kill %1 %2
 ```
 
-> **Milestone 3 demo checkpoint:** Web UI loads, sessions list, config editable — all without SQLite direct reads. Request Scot web UI verification.
+---
+
+### Phase 3.3 — API Surface Cleanup (discovered during docs cycle, 2026-05-10)
+
+**Action:** Two structural gaps surfaced when docs subagents read the post-3.1 surface. Both ship as one phase — single review pass, both touch `internal/server` / `internal/store`.
+
+**Resolves:**
+- **3.3a — `Message` struct JSON tags.** `GET /api/sessions/{id}/messages` currently returns capitalized Go field names (`ID`, `SessionID`, `Role`, `Content`, `CreatedAt`). Inconsistent with B5 (Phase 3.1), which added `json:"..."` tags to `Session`, `Role`, `ConsiderAspect` but missed `Message`. Canonical tags: snake_case lowercase, matching the rest of the surface.
+- **3.3b — `PayloadError` SSE shape.** `/api/events` emits `PayloadError{Err error}` which serializes to `{}` because Go's `error` interface has no exported fields. Propose canonical shape (likely `{message: string}`); update emit sites and SSE consumers.
+
+**Crew notes:**
+Research phase verifies the live shape via `curl` against a non-empty session and against the `/api/events` SSE stream. Plan phase decides exact tag names and migration impact (web-agent does not currently read messages over HTTP; cairo-ui draft `HttpCairoClient` may — check).
+
+**Success criteria:**
+```bash
+cairo serve --port 18080 --auth=false &
+SERVE_PID=$!
+sleep 3
+
+# 3.3a — Message keys should be lowercase snake_case
+SID=$(curl -s http://localhost:18080/api/sessions | jq -r '.[0].id // .[0].ID')
+curl -s "http://localhost:18080/api/sessions/$SID/messages" | jq '.[0] | keys'
+# ["content","created_at","id","role","session_id", ...]
+
+# 3.3b — PayloadError carries a message field, not {}
+# (manually exercise an error path on the agent loop while subscribed to /api/events)
+
+kill $SERVE_PID
+```
+
+---
+
+### Phase 3.4 — TUI Command Parity (discovered during docs cycle, 2026-05-10)
+
+**Action:** Docs agent verified `/sessions`, `/jobs`, `/memories`, `/tools`, `/skills` are registered in the line-CLI `defaultCommands` but NOT in the TUI's `defaultCommands()`. Resolve whether this is migration drift from Phase 1.4 (regression to fix) or by-design (TUI uses panels for the same data).
+
+**Resolves:**
+- Static diff between `~/cairo/internal/tui/` and `cairo2/internal/tui/` command registration sites.
+- Decision documented: regression → list missing commands and land them; by-design → docs amended to point users to panels.
+- If regression: TUI `defaultCommands()` registers the missing commands with appropriate output mode (panel-toggle vs inline transcript).
+
+**Crew notes:**
+Research phase is read-only and runs on the bridge. Implementation only triggers if research concludes "regression." Live verification needs Scot in the TUI typing `/sessions` etc.
+
+**Success criteria:**
+```bash
+# Static parity check
+git -C ~/cairo grep -nE "AddCommand|RegisterCommand" -- internal/tui/ > /tmp/cairo-tui-cmds.txt
+git -C ~/cairo2 grep -nE "AddCommand|RegisterCommand" -- internal/tui/ > /tmp/cairo2-tui-cmds.txt
+diff /tmp/cairo-tui-cmds.txt /tmp/cairo2-tui-cmds.txt
+# Either: no diff (by-design parity), or diff documents the gap closed
+```
+
+---
+
+> **Milestone 3 demo checkpoint:** Web UI loads, sessions list, config editable — all without SQLite direct reads. `Message` and `PayloadError` shapes are canonical. TUI commands at parity with line-CLI (or panels documented as the equivalent). Request Scot web UI + TUI verification.
 
 ---
 
