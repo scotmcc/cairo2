@@ -152,3 +152,33 @@ func TestMetricsOK(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionsMessagesEmpty(t *testing.T) {
+	fa := newFakeAgent("test", nil)
+	d, err := sqliteopen.OpenAt(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("OpenAt: %v", err)
+	}
+	t.Cleanup(func() { d.Close() })
+
+	sess, err := d.Sessions.Create("empty", "/tmp", "thinking-partner")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	bridge := NewBridge(fa)
+	srv := New(fa, d, bridge, Options{})
+
+	url := fmt.Sprintf("/api/sessions/%d/messages", sess.ID)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rr := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	// Must be "[]" (JSON array), not "null"
+	if body != "[]\n" {
+		t.Errorf("expected body '[]\\n', got %q", body)
+	}
+}

@@ -72,8 +72,8 @@ func TestSessionsPatchRename(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&updated); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if updated["Name"] != "renamed" {
-		t.Errorf("expected Name 'renamed', got %v", updated["Name"])
+	if updated["name"] != "renamed" {
+		t.Errorf("expected name 'renamed', got %v", updated["name"])
 	}
 }
 
@@ -112,8 +112,8 @@ func TestAspectPutUpsert(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&aspect); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if aspect["Name"] != "testaspect" {
-		t.Errorf("expected Name 'testaspect', got %v", aspect["Name"])
+	if aspect["name"] != "testaspect" {
+		t.Errorf("expected name 'testaspect', got %v", aspect["name"])
 	}
 }
 
@@ -148,5 +148,16 @@ func TestAspectDeleteOK(t *testing.T) {
 	srv.mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAspectPatchMissing404(t *testing.T) {
+	srv, _ := newMutationTestServer(t, Options{})
+	body := bytes.NewBufferString(`{"enabled":true}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/consider/aspects/doesnotexist", body)
+	rr := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
 	}
 }

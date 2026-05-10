@@ -130,6 +130,13 @@ func (s *Server) handleAspectPut(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAspectPatch(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if _, err := s.db.ConsiderAspects.Get(name); err == sql.ErrNoRows {
+		writeJSONError(w, http.StatusNotFound, "aspect not found")
+		return
+	} else if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	var body struct {
 		Enabled bool `json:"enabled"`
 	}

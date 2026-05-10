@@ -6,13 +6,13 @@ import (
 )
 
 type Session struct {
-	ID             int64
-	Name           string
-	CWD            string
-	Role           string
-	DisciplineMode int // 1=readonly, 2=scoped, 3=full
-	CreatedAt      time.Time
-	LastActive     time.Time
+	ID             int64     `json:"id"`
+	Name           string    `json:"name"`
+	CWD            string    `json:"cwd"`
+	Role           string    `json:"role"`
+	DisciplineMode int       `json:"discipline_mode"` // 1=readonly, 2=scoped, 3=full
+	CreatedAt      time.Time `json:"created_at"`
+	LastActive     time.Time `json:"last_active"`
 }
 
 type SessionQ struct{ db *sql.DB }

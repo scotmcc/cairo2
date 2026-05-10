@@ -9,16 +9,16 @@ import (
 )
 
 type Role struct {
-	ID            int64
-	Name          string
-	Description   string
-	Model         string
-	BasePromptKey string
-	Tools         string // JSON array of tool names
-	Think         string // "" inherit | "true" | "false"
-	Consider      bool   // false disables consider for this role; default true
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            int64     `json:"id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	Model         string    `json:"model"`
+	BasePromptKey string    `json:"base_prompt_key"`
+	Tools         string    `json:"tools"`    // JSON array of tool names
+	Think         string    `json:"think"`    // "" inherit | "true" | "false"
+	Consider      bool      `json:"consider"` // false disables consider for this role; default true
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type RoleQ struct{ db *sql.DB }

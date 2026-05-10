@@ -4,10 +4,10 @@ import "database/sql"
 
 // ConsiderAspect is one entry in the consider_aspects table.
 type ConsiderAspect struct {
-	Name     string
-	Traits   string
-	Enabled  bool
-	Position int
+	Name     string `json:"name"`
+	Traits   string `json:"traits"`
+	Enabled  bool   `json:"enabled"`
+	Position int    `json:"position"`
 }
 
 // ConsiderAspectQ provides query methods for the consider_aspects table.

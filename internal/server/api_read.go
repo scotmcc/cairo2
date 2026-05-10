@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/scotmcc/cairo2/internal/store/sessions"
 	"github.com/scotmcc/cairo2/internal/version"
 )
 
@@ -125,6 +126,9 @@ func (s *Server) handleSessionsMessages(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if msgs == nil {
+		msgs = []*sessions.Message{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(msgs)

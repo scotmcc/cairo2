@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -166,7 +165,7 @@ func runServe(args []string) error {
 		Port:   port,
 		Auth:   *authFlag,
 		Token:  token,
-		DBPath: filepath.Join(sqliteopen.DefaultDataDir(), "cairo.db"),
+		DBPath: cairoDBPath(),
 	}
 	srv := server.New(a, database, bridge, opts)
 
