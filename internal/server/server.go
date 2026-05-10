@@ -78,6 +78,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("PUT /api/consider/aspects/{name}", s.auth(s.handleAspectPut))
 	s.mux.HandleFunc("PATCH /api/consider/aspects/{name}", s.auth(s.handleAspectPatch))
 	s.mux.HandleFunc("DELETE /api/consider/aspects/{name}", s.auth(s.handleAspectDelete))
+
+	// Phase 3.1 — SSE observer stream.
+	s.mux.HandleFunc("GET /api/events", s.auth(s.handleEvents))
 }
 
 // Serve accepts requests on ln until ctx is done.
