@@ -14,31 +14,34 @@ import (
 
 // Options configures the HTTP server at startup.
 type Options struct {
-	Port  int
-	Auth  bool
-	Token string
+	Port   int
+	Auth   bool
+	Token  string
+	DBPath string
 }
 
 // Server owns the HTTP listener, auth middleware, and route registration.
 type Server struct {
-	agent   Prompter
-	db      *sqliteopen.DB
-	bridge  *SessionBridge
-	opts    Options
-	mux     *http.ServeMux
-	httpSrv *http.Server
-	streams *streamRegistry
+	agent     Prompter
+	db        *sqliteopen.DB
+	bridge    *SessionBridge
+	opts      Options
+	mux       *http.ServeMux
+	httpSrv   *http.Server
+	streams   *streamRegistry
+	startedAt time.Time
 }
 
 // New creates a Server. Call Serve to start accepting on a listener.
 func New(a Prompter, database *sqliteopen.DB, bridge *SessionBridge, opts Options) *Server {
 	s := &Server{
-		agent:   a,
-		db:      database,
-		bridge:  bridge,
-		opts:    opts,
-		mux:     http.NewServeMux(),
-		streams: newStreamRegistry(),
+		agent:     a,
+		db:        database,
+		bridge:    bridge,
+		opts:      opts,
+		mux:       http.NewServeMux(),
+		streams:   newStreamRegistry(),
+		startedAt: time.Now(),
 	}
 	s.registerRoutes()
 	return s
@@ -58,6 +61,14 @@ func (s *Server) registerRoutes() {
 	// JSONRPC surface (Phase 5).
 	s.mux.HandleFunc("POST /rpc", s.auth(s.handleRPC))
 	s.mux.HandleFunc("GET /rpc/stream/", s.auth(s.handleRPCStream))
+
+	// Phase 3.1 — read endpoints.
+	s.mux.HandleFunc("GET /api/health", s.handleAPIHealth)
+	s.mux.HandleFunc("GET /api/config/snapshot", s.auth(s.handleConfigSnapshot))
+	s.mux.HandleFunc("GET /api/sessions", s.auth(s.handleSessionsList))
+	s.mux.HandleFunc("GET /api/sessions/{id}", s.auth(s.handleSessionsGet))
+	s.mux.HandleFunc("GET /api/sessions/{id}/messages", s.auth(s.handleSessionsMessages))
+	s.mux.HandleFunc("GET /api/metrics", s.auth(s.handleMetrics))
 }
 
 // Serve accepts requests on ln until ctx is done.
