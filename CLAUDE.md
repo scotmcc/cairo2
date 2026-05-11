@@ -68,7 +68,7 @@ All scripts in `scripts/` are self-contained and safe to re-run.
 | `scripts/build-web-agent.sh` | Build the web agent (npm install, TypeScript compile, webpack) → `web-agent/dist/`. |
 | `scripts/cairo-web.sh` | Runtime launcher: starts the web-agent Node server + manages the Cairo child process. Env vars: `CAIRO_WEB_HOST`, `CAIRO_WEB_PORT`, `CAIRO_WEB_TOKEN`, `CAIRO_CLI_PATH`, `CAIRO_WORKSPACE_ROOTS`. |
 | `scripts/install-web-agent.sh` | Install web-agent to `/usr/share/cairo/web-agent/`, configure systemd user unit `cairo-web.service`, enable autostart. |
-| `scripts/packaging/build-packages.sh` | Build `.deb` and `.rpm` packages → `build/packages/`. Flags: `--deb`, `--rpm`, `--version VERSION`, `--skip-extension`, `--skip-web-agent`, `--skip-tests`. |
+| `scripts/packaging/build-packages.sh` | Build `.deb` and `.rpm` packages → `dist/`. Flags: `--deb`, `--rpm`, `--version VERSION`, `--skip-extension`, `--skip-web-agent`, `--skip-tests`. |
 | `scripts/packaging/pre-package.sh` | Pre-package gate: runs lint/tests before packaging. Called by `build-packages.sh` unless `--skip-tests`. |
 | `scripts/smoke/registry-client.sh` | End-to-end smoke: builds cairo + cairo-registry, runs full registration + WS liveness + stale sweep + stable-agent-id-on-restart flow. Requires `jq`, `python3`. Exit 0 = PASS. |
 
