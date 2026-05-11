@@ -41,6 +41,9 @@ type chatResponse struct {
 // handleChat handles POST /api/chat.
 // Decision Q1 (plan): system messages are dropped entirely — do not inject.
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "chat.send", "chat"); !ok {
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return

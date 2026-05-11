@@ -88,6 +88,9 @@ var safeSlashCommands = map[string]bool{
 
 // handleRPC handles POST /rpc — the JSON-RPC 2.0 dispatcher.
 func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "rpc.call", "rpc"); !ok {
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -189,6 +192,9 @@ func (s *Server) rpcSendStream(w http.ResponseWriter, r *http.Request, req *rpcR
 
 // handleRPCStream handles GET /rpc/stream/{id} — SSE consumer for a pending stream.
 func (s *Server) handleRPCStream(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "rpc.stream", "rpc"); !ok {
+		return
+	}
 	// Extract {id} from the URL path manually (Go 1.22 pattern matching).
 	id := strings.TrimPrefix(r.URL.Path, "/rpc/stream/")
 	if id == "" || strings.Contains(id, "/") {

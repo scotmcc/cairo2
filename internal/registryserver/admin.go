@@ -26,6 +26,9 @@ func operatorFromHeader(r *http.Request) string {
 
 func handleAdminAgents(ledger *Ledger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := gate(w, r, "agent.list", "agents"); !ok {
+			return
+		}
 		operator := operatorFromHeader(r)
 		agents := []Agent{}
 		if operator != "" {
@@ -44,6 +47,9 @@ func handleAdminAgents(ledger *Ledger) http.HandlerFunc {
 func handleAdminAgent(ledger *Ledger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
+		if _, ok := gate(w, r, "agent.get", id); !ok {
+			return
+		}
 		operator := operatorFromHeader(r)
 		if operator == "" {
 			http.NotFound(w, r)
@@ -66,6 +72,9 @@ func handleAdminAgent(ledger *Ledger) http.HandlerFunc {
 func handleAdminRevoke(ledger *Ledger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
+		if _, ok := gate(w, r, "agent.revoke", id); !ok {
+			return
+		}
 		operator := operatorFromHeader(r)
 		if operator == "" {
 			http.Error(w, `{"error":"operator required"}`, http.StatusBadRequest)
@@ -87,6 +96,9 @@ func handleAdminRevoke(ledger *Ledger) http.HandlerFunc {
 
 func handleAdminBroadcast(ledger *Ledger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := gate(w, r, "agent.broadcast", "broadcast"); !ok {
+			return
+		}
 		operator := operatorFromHeader(r)
 		if operator == "" {
 			http.Error(w, `{"error":"operator required"}`, http.StatusBadRequest)

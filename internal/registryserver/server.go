@@ -93,6 +93,9 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	if _, ok := gate(w, r, "agent.register", "agents"); !ok {
+		return
+	}
 	var req protocol.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
@@ -165,6 +168,9 @@ func LogRequests(h http.Handler) http.Handler {
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
+	if _, ok := gate(w, r, "agent.list", "agents"); !ok {
+		return
+	}
 	agents, err := s.ledger.List(r.Context())
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)

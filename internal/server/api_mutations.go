@@ -7,6 +7,9 @@ import (
 )
 
 func (s *Server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "config.put", "config"); !ok {
+		return
+	}
 	key := r.PathValue("key")
 	var value string
 	if err := json.NewDecoder(r.Body).Decode(&value); err != nil {
@@ -22,6 +25,10 @@ func (s *Server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionsPatch(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	if _, ok := s.gate(w, r, "session.patch", sessionID); !ok {
+		return
+	}
 	id, ok := parsePathID(w, r)
 	if !ok {
 		return
@@ -51,6 +58,10 @@ func (s *Server) handleSessionsPatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionsDelete(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	if _, ok := s.gate(w, r, "session.delete", sessionID); !ok {
+		return
+	}
 	id, ok := parsePathID(w, r)
 	if !ok {
 		return
@@ -70,6 +81,9 @@ func (s *Server) handleSessionsDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRolesPatch(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "roles.patch", "roles"); !ok {
+		return
+	}
 	name := r.PathValue("name")
 	var body struct {
 		Field string `json:"field"`
@@ -105,6 +119,9 @@ func (s *Server) handleRolesPatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAspectPut(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "aspect.put", "aspects"); !ok {
+		return
+	}
 	name := r.PathValue("name")
 	var body struct {
 		Traits   string `json:"traits"`
@@ -129,6 +146,9 @@ func (s *Server) handleAspectPut(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAspectPatch(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "aspect.patch", "aspects"); !ok {
+		return
+	}
 	name := r.PathValue("name")
 	if _, err := s.db.ConsiderAspects.Get(name); err == sql.ErrNoRows {
 		writeJSONError(w, http.StatusNotFound, "aspect not found")
@@ -153,6 +173,9 @@ func (s *Server) handleAspectPatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAspectDelete(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "aspect.delete", "aspects"); !ok {
+		return
+	}
 	name := r.PathValue("name")
 	if _, err := s.db.ConsiderAspects.Get(name); err == sql.ErrNoRows {
 		writeJSONError(w, http.StatusNotFound, "aspect not found")

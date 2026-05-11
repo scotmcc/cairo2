@@ -83,6 +83,9 @@ type openAIStreamChunk struct {
 // handleModels handles GET /v1/models.
 // Returns the single "cairo" model entry required by OpenAI clients at startup.
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "models.list", "models"); !ok {
+		return
+	}
 	list := openAIModelList{
 		Object: "list",
 		Data: []openAIModel{
@@ -102,6 +105,9 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 // Extracts the last user message, runs the full agent loop, and returns an
 // OpenAI-shaped response. System messages are dropped per the design doc.
 func (s *Server) handleCompletions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "chat.completions", "chat"); !ok {
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return

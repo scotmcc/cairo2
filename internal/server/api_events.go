@@ -20,6 +20,9 @@ var sseAllowedTypes = map[agent.EventType]bool{
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "events.stream", "events"); !ok {
+		return
+	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)

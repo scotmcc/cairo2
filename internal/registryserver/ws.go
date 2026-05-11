@@ -25,6 +25,10 @@ func newWsHandler(ledger *Ledger) *wsHandler {
 func (h *wsHandler) handle(w http.ResponseWriter, r *http.Request) {
 	agentID := r.PathValue("id")
 
+	if _, ok := gate(w, r, "agent.stream", agentID); !ok {
+		return
+	}
+
 	// Verify agent exists; Touch also bumps last_seen_at.
 	if err := h.ledger.Touch(r.Context(), agentID); err != nil {
 		if err == sql.ErrNoRows {

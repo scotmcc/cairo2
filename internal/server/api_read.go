@@ -23,6 +23,9 @@ func (s *Server) handleAPIHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfigSnapshot(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "config.snapshot", "config"); !ok {
+		return
+	}
 	cfg, err := s.db.Config.All()
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
@@ -57,6 +60,9 @@ type sessionListItem struct {
 }
 
 func (s *Server) handleSessionsList(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "session.list", "sessions"); !ok {
+		return
+	}
 	sessions, err := s.db.Sessions.List()
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
@@ -86,6 +92,10 @@ func (s *Server) handleSessionsList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionsGet(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	if _, ok := s.gate(w, r, "session.get", sessionID); !ok {
+		return
+	}
 	id, ok := parsePathID(w, r)
 	if !ok {
 		return
@@ -104,6 +114,10 @@ func (s *Server) handleSessionsGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionsMessages(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	if _, ok := s.gate(w, r, "session.messages", sessionID); !ok {
+		return
+	}
 	id, ok := parsePathID(w, r)
 	if !ok {
 		return
@@ -148,6 +162,9 @@ type metricsResponse struct {
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, "metrics.read", "metrics"); !ok {
+		return
+	}
 	sc, err := s.db.Sessions.Count()
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
