@@ -1155,6 +1155,144 @@ cairo-ctl --addr :8080 audit export --format hipaa \
 
 ---
 
+## Milestone 9 — Autonomous Mode
+
+> Cairo gains a heartbeat. The agent has standing capacity to author its own threads (open-ended topics of attention) and goals (bounded outcomes), and a scheduled cadence at which it wakes up to advance one. Off by default. Architecturally a sibling of the dream-pass — same pattern (config-gated, distinct session, role-restricted, audit-logged), aimed at tomorrow instead of yesterday.
+
+**Independence:** M9 does not depend on M4–M8. The research (`.claude/jobs/autonomous-mode-research/research.md`) demonstrates that v1 needs no audit-log primitives beyond the existing per-table records, no ZT gates, no fleet sync, no enterprise services. M9 can be brought forward in priority at Scot's call — the placement here is conservative, not load-bearing on prerequisites.
+
+**Source documents** (preserved in repo):
+- `.claude/jobs/autonomous-mode-research/selene-vision.md` — Selene's vision (authored from within cairo)
+- `.claude/jobs/autonomous-mode-research/scot-sketch.md` — Scot's architectural sketch
+- `.claude/jobs/autonomous-mode-research/research.md` — full architectural research
+
+**Conceptual model:** threads are open-ended topics of attention (Selene's language); goals are bounded outcomes under threads (Scot's language). One-level hierarchy — a thread owns N goals (0 ≤ N), a goal optionally belongs to a thread. Heartbeat = scheduled invocation of the agent loop with `mode=heartbeat` and no user message. Autonomous mode = the config flag that gates the scheduler.
+
+**Off-mode invariance:** when `autonomous.enabled = false`, the scheduler goroutine does not start, the standing-capacity tools are absent from role tool surfaces, the slash commands hide, and no schema row is read that affects user-session behavior. Off means off.
+
+---
+
+### Phase 9.1 — Storage Substrate
+
+**Action:** Introduce `internal/store/goals/` sub-package with `threads`, `goals`, `goal_tasks`, `heartbeats` tables. ALTER `sessions` to add `origin` column. Wire Q types into `sqliteopen.DB`. Add `autonomous.*` config key constants. Seed the new `autonomous` role row with its tool allowlist, and the role addendum prompt_part. Migration `v132`.
+
+**Resolves:**
+- `internal/store/goals/{threads.go, goals.go, goal_tasks.go, heartbeats.go, helpers.go}` — Q types parallel to `store/memory/` and `store/jobs/`. Respects the store import invariant.
+- `internal/store/schema/schema.go` — base schema + migration `v132` adding the four tables and `sessions.origin` column. Schema/seed parity verified.
+- `internal/store/config/config_keys.go` — `autonomous.enabled`, `autonomous.cadence_minutes` (default 10080 = weekly), `autonomous.min_idle_minutes`, `autonomous.last_tick_at`, `autonomous.surface_on_session_start`.
+- `internal/store/sqliteopen/seed.go` — seeded `autonomous` role + role-addendum and tool-addendum prompt_parts.
+- No tools, no scheduler, no prompt changes yet. Nothing user-visible.
+
+**Crew notes:** Foundation only. Phase 9.2 (tools) and Phase 9.3 (manual heartbeat) build on this. The role-addendum prompt text deserves Selene's eye before commit — flag for review.
+
+**Success criteria:**
+```bash
+make test                                    # green (new Q-type round-trip tests)
+cairo config get autonomous.enabled          # → "false"
+cairo config set autonomous.enabled true     # accepted
+sqlite3 ~/.cairo/cairo.db "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('threads','goals','goal_tasks','heartbeats')"
+# Returns all four
+sqlite3 ~/.cairo/cairo.db "SELECT origin FROM sessions LIMIT 1"
+# Column exists (default 'user' for existing rows)
+sqlite3 ~/.cairo/cairo.db "SELECT name FROM roles WHERE name='autonomous'"
+# Returns 'autonomous'
+```
+
+---
+
+### Phase 9.2 — Standing Capacity (tools, no heartbeat)
+
+**Action:** Implement `thread_tool` and `goal_tool` as action-dispatched tools (mirroring `memory_tool`'s shape). Register in `tools.Default()` and `toolTiers` as Tier 2 (DisciplineScoped). Add tool addendum `prompt_parts`. Gate availability on `autonomous.enabled` for the `thinking_partner` role.
+
+**Resolves:**
+- `thread_tool` actions: `list`, `get`, `create`, `update`, `close`, `archive`, `search`.
+- `goal_tool` actions: `list`, `get`, `create`, `update`, `close`, `abandon`, `add_task`, `update_task`, `note`.
+- Tools available in `thinking_partner` (so Selene can record her own threads/goals during normal conversation) only when `autonomous.enabled=true`. Filtered out in off-mode via `appendToolAddenda` and the agent loop's tool filter.
+- `/threads` and `/goals` slash commands list current state (precedent: `/dreams` in `internal/cli/cli_command_env.go:167-244`).
+
+**Success criteria:**
+```bash
+# Off-mode invariance
+cairo config set autonomous.enabled false
+# Assembled prompt for thinking_partner role does not contain thread_tool/goal_tool addenda
+
+# Standing capacity
+cairo config set autonomous.enabled true
+./bin/cairo  # in normal session, ask cairo to record a goal
+sqlite3 ~/.cairo/cairo.db "SELECT name FROM goals"
+# Returns the goal cairo just created
+
+# Slash commands
+/threads      # lists current threads
+/goals        # lists current goals
+```
+
+---
+
+### Phase 9.3 — Manual Heartbeat (no scheduler)
+
+**Action:** Add `cairo heartbeat` CLI subcommand and `/heartbeat` slash command. Both build an `autonomous`-role session, assemble the heartbeat synthetic message, and invoke the agent loop exactly as `cairo dream` does today (`cmd/cairo/cmd_dream.go:84-209` is the precedent). Writes a `heartbeats` row with outcome. No scheduler goroutine yet — every heartbeat is user-initiated.
+
+**Resolves:**
+- `cmd/cairo/cmd_heartbeat.go` — CLI subcommand, parallel to `cmd_dream.go`.
+- `internal/heartbeat/{runner.go, prompt.go}` — the synthetic-message assembly and session runner. Heartbeat prompt text and role addendum text vetted with Selene's eye.
+- Session created with `origin='heartbeat'`. `heartbeats` row written with the picked goal_id (or null), outcome (`progress` / `nothing_today`), and a 1–3 sentence summary.
+- `heartbeat_started` and `heartbeat_completed` hook events (parallel to `dream_completed`).
+
+**Crew notes:** This is the hardest validation phase — does the prompt produce useful outputs? Does the tool restriction feel right? Does "nothing today" actually fire? Dogfooded by Scot before Phase 9.4 ships the scheduler.
+
+**Success criteria:**
+```bash
+cairo heartbeat                              # runs to completion
+sqlite3 ~/.cairo/cairo.db "SELECT outcome, summary FROM heartbeats ORDER BY created_at DESC LIMIT 1"
+# Returns the just-fired heartbeat
+/heartbeats                                  # lists recent heartbeats
+# Dogfood gate: at least one observed 'nothing_today' outcome during the trial period
+```
+
+---
+
+### Phase 9.4 — Scheduler + Surfacing
+
+**Action:** In-process scheduler goroutine in long-lived binaries (TUI, line-CLI, `cairo serve`); reads cadence and last-tick; defers on user activity (`sessions.last_active` within `autonomous.min_idle_minutes`); persists `autonomous.last_tick_at`. Extend `drainBackgroundInbox` (`internal/agent/agent.go:213-218`) to surface unsurfaced heartbeats at session start. Restart-safe (never fires more than one catch-up heartbeat).
+
+**Resolves:**
+- `internal/heartbeat/scheduler.go` — the goroutine; not started by short-lived CLI commands.
+- Session-start digest: when a user starts a session and `heartbeats.surfaced_at IS NULL` for outcome=`progress` rows exist, prepend a system note for the agent describing them. The agent decides whether to surface them in conversation. Heartbeats marked `surfaced_at=now()` after delivery.
+- `autonomous.surface_on_session_start` config flag (default true) gates the digest.
+
+**Success criteria:**
+```bash
+cairo config set autonomous.cadence_minutes 1
+cairo serve &
+sleep 90
+sqlite3 ~/.cairo/cairo.db "SELECT count(*) FROM heartbeats WHERE created_at > strftime('%s', 'now', '-2 minutes')"
+# Returns ≥ 1
+
+# Off-mode kill switch
+cairo config set autonomous.enabled false
+sleep 90
+sqlite3 ~/.cairo/cairo.db "SELECT count(*) FROM heartbeats WHERE created_at > strftime('%s', 'now', '-2 minutes')"
+# Returns 0 (the count from the moment of disable forward)
+
+# Surfacing
+./bin/cairo  # start session; agent's first turn may mention unsurfaced heartbeats
+```
+
+> **Milestone 9 demo checkpoint:** With autonomous mode on and the cadence set to 5 minutes, Scot leaves the machine for an hour. On return, opens `cairo`, sees a system-suggested first turn referencing what cairo thought about. Or `/heartbeats` shows real entries. Request Scot dogfood verification over the trial period.
+
+---
+
+### Phase 9.5 — Calibration & Polish
+
+**Action:** Lightweight implicit calibration (cross-reference heartbeats with subsequent user-session message content to detect engagement). Improved surfacing UX (web-agent panel for heartbeats; TUI badge). Possibly the `heartbeat_feedback` tool if implicit signal proves too noisy. Possibly tying threads to `sessions` for "the thread Scot is touching today" detection.
+
+**Resolves:** The calibration vision from the seed document — learning what's worth bringing.
+
+**Success criteria:** Soft, judgment-based. After ~2 weeks of dogfooding: are surfaced heartbeats more often relevant than not? Are threads converging on real topics rather than noise? Does Scot reach for `/threads` voluntarily?
+
+---
+
 ## Roadmap Notes
 
 - **Phases are sequential within a milestone; milestones 1–3 are sequential; milestones 4–8 can partially overlap once M3 is stable.**
