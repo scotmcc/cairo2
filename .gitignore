@@ -9,7 +9,8 @@ Thumbs.db
 # Local dev notes & agent state
 .claude/personal/
 .claude/worktrees/
-.claude/jobs/
+.claude/jobs/*
+!.claude/jobs/llm1-data-layer/
 .claude/scheduled_tasks.lock
 .internal/
 .cairo/
