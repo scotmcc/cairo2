@@ -5,23 +5,29 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/scotmcc/cairo2/internal/access"
+	"github.com/scotmcc/cairo2/internal/audit"
 )
 
 // NewAdmin returns the admin mux pre-wired with operator-scoped endpoints.
-func NewAdmin(ledger *Ledger, startedAt time.Time) http.Handler {
+// auditReader may be nil (falls back to no audit query capability).
+func NewAdmin(ledger *Ledger, startedAt time.Time, auditReader audit.Reader) http.Handler {
 	decider := access.New(ledger.AsAccessAdapter())
 	mux := http.NewServeMux()
 
 	// Existing routes — updated to use decider.
 	mux.HandleFunc("GET /agents", handleAdminAgents(ledger, decider))
-	mux.HandleFunc("GET /agents/{id}", handleAdminAgent(ledger))
+	mux.HandleFunc("GET /agents/{id}", handleAdminAgent(ledger, decider))
 	mux.HandleFunc("GET /healthz", handleAdminHealthz(ledger, startedAt))
-	mux.HandleFunc("POST /agents/{id}/revoke", handleAdminRevoke(ledger))
-	mux.HandleFunc("POST /broadcast", handleAdminBroadcast(ledger))
+	mux.HandleFunc("POST /agents/{id}/revoke", handleAdminRevoke(ledger, decider))
+	mux.HandleFunc("POST /broadcast", handleAdminBroadcast(ledger, decider))
+
+	// Audit log — super-admin only.
+	mux.HandleFunc("GET /audit", handleAdminAudit(decider, auditReader))
 
 	// Department management.
 	mux.HandleFunc("GET /departments", handleDeptList(ledger, decider))
@@ -76,10 +82,10 @@ func handleAdminAgents(ledger *Ledger, decider *access.Decider) http.HandlerFunc
 	}
 }
 
-func handleAdminAgent(ledger *Ledger) http.HandlerFunc {
+func handleAdminAgent(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if _, ok := gate(w, r, "agent.get", id); !ok {
+		agentID := r.PathValue("id")
+		if _, ok := gateWith(decider, w, r, "agent.get", agentID); !ok {
 			return
 		}
 		operator := operatorFromHeader(r)
@@ -87,7 +93,7 @@ func handleAdminAgent(ledger *Ledger) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
-		agent, err := ledger.GetByOwner(r.Context(), id, operator)
+		agent, err := ledger.GetByOwner(r.Context(), agentID, operator)
 		if err != nil {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
@@ -101,10 +107,10 @@ func handleAdminAgent(ledger *Ledger) http.HandlerFunc {
 	}
 }
 
-func handleAdminRevoke(ledger *Ledger) http.HandlerFunc {
+func handleAdminRevoke(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if _, ok := gate(w, r, "agent.revoke", id); !ok {
+		agentID := r.PathValue("id")
+		if _, ok := gateWith(decider, w, r, "agent.revoke", agentID); !ok {
 			return
 		}
 		operator := operatorFromHeader(r)
@@ -112,7 +118,7 @@ func handleAdminRevoke(ledger *Ledger) http.HandlerFunc {
 			http.Error(w, `{"error":"operator required"}`, http.StatusBadRequest)
 			return
 		}
-		if err := ledger.Revoke(r.Context(), id, operator); err != nil {
+		if err := ledger.Revoke(r.Context(), agentID, operator); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				http.NotFound(w, r)
 				return
@@ -126,9 +132,9 @@ func handleAdminRevoke(ledger *Ledger) http.HandlerFunc {
 	}
 }
 
-func handleAdminBroadcast(ledger *Ledger) http.HandlerFunc {
+func handleAdminBroadcast(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := gate(w, r, "agent.broadcast", "broadcast"); !ok {
+		if _, ok := gateWith(decider, w, r, "broadcast", "broadcast"); !ok {
 			return
 		}
 		operator := operatorFromHeader(r)
@@ -366,5 +372,56 @@ func handleSuperAdminRemove(ledger *Ledger, decider *access.Decider) http.Handle
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"removed"}`))
+	}
+}
+
+// --- Audit log handler ---
+
+func handleAdminAudit(decider *access.Decider, reader audit.Reader) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := gateWith(decider, w, r, "audit.list", "audit"); !ok {
+			return
+		}
+		if reader == nil {
+			http.Error(w, `{"error":"audit reader not configured"}`, http.StatusInternalServerError)
+			return
+		}
+
+		f := audit.QueryFilter{}
+		q := r.URL.Query()
+		f.Actor = q.Get("actor")
+		f.Gate = q.Get("gate")
+		f.Action = q.Get("action")
+
+		if s := q.Get("since"); s != "" {
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				f.Since = t
+			} else if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+				f.Since = time.Unix(n, 0)
+			}
+		}
+		if s := q.Get("until"); s != "" {
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				f.Until = t
+			} else if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+				f.Until = time.Unix(n, 0)
+			}
+		}
+		if s := q.Get("limit"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil {
+				f.Limit = n
+			}
+		}
+
+		events, err := reader.Query(r.Context(), f)
+		if err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		if events == nil {
+			events = []audit.Event{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(events)
 	}
 }

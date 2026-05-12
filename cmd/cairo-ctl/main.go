@@ -35,6 +35,9 @@ Subcommands:
   super-admins list                 List super-admins
   super-admins add <user>           Add super-admin
   super-admins remove <user>        Remove super-admin
+  audit list [--gate G] [--actor A] [--action X]
+             [--since DATE] [--until DATE] [--limit N] [--json]
+                              List audit events (super-admin only)
 
 Flags:
   --addr string     Admin listener address (default "127.0.0.1:8081")
@@ -134,6 +137,8 @@ func main() {
 		cmdDepartments(client, addr, operator, args[1:])
 	case "super-admins":
 		cmdSuperAdmins(client, addr, operator, args[1:])
+	case "audit":
+		cmdAudit(client, addr, operator, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "error: unknown subcommand %q\n\n", args[0])
 		usage()
@@ -538,4 +543,152 @@ func cmdHealth(client *http.Client, addr string) {
 	fmt.Printf("stale:          %d\n", h.Stale)
 	fmt.Printf("ws_connected:   %d\n", h.WsConnected)
 	fmt.Printf("uptime_seconds: %d\n", h.UptimeSeconds)
+}
+
+type auditEvent struct {
+	Timestamp string            `json:"timestamp"`
+	Actor     string            `json:"actor"`
+	Gate      string            `json:"gate"`
+	Action    string            `json:"action"`
+	Target    string            `json:"target"`
+	Decision  string            `json:"decision"`
+	Reason    string            `json:"reason,omitempty"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+}
+
+func cmdAudit(client *http.Client, addr, operator string, args []string) {
+	if len(args) == 0 || args[0] != "list" {
+		fmt.Fprintln(os.Stderr, "error: audit requires 'list' subcommand")
+		os.Exit(1)
+	}
+	args = args[1:]
+
+	var (
+		gateFilter   string
+		actorFilter  string
+		actionFilter string
+		sinceFilter  string
+		untilFilter  string
+		limitFilter  string
+		jsonOutput   bool
+	)
+
+	for len(args) > 0 {
+		a := args[0]
+		switch {
+		case a == "--gate" && len(args) > 1:
+			gateFilter = args[1]
+			args = args[2:]
+		case strings.HasPrefix(a, "--gate="):
+			gateFilter = strings.TrimPrefix(a, "--gate=")
+			args = args[1:]
+		case a == "--actor" && len(args) > 1:
+			actorFilter = args[1]
+			args = args[2:]
+		case strings.HasPrefix(a, "--actor="):
+			actorFilter = strings.TrimPrefix(a, "--actor=")
+			args = args[1:]
+		case a == "--action" && len(args) > 1:
+			actionFilter = args[1]
+			args = args[2:]
+		case strings.HasPrefix(a, "--action="):
+			actionFilter = strings.TrimPrefix(a, "--action=")
+			args = args[1:]
+		case a == "--since" && len(args) > 1:
+			sinceFilter = args[1]
+			args = args[2:]
+		case strings.HasPrefix(a, "--since="):
+			sinceFilter = strings.TrimPrefix(a, "--since=")
+			args = args[1:]
+		case a == "--until" && len(args) > 1:
+			untilFilter = args[1]
+			args = args[2:]
+		case strings.HasPrefix(a, "--until="):
+			untilFilter = strings.TrimPrefix(a, "--until=")
+			args = args[1:]
+		case a == "--limit" && len(args) > 1:
+			limitFilter = args[1]
+			args = args[2:]
+		case strings.HasPrefix(a, "--limit="):
+			limitFilter = strings.TrimPrefix(a, "--limit=")
+			args = args[1:]
+		case a == "--json":
+			jsonOutput = true
+			args = args[1:]
+		default:
+			fmt.Fprintf(os.Stderr, "error: unknown flag %q\n", a)
+			os.Exit(1)
+		}
+	}
+
+	u := "http://" + addr + "/audit?"
+	params := []string{}
+	if gateFilter != "" {
+		params = append(params, "gate="+gateFilter)
+	}
+	if actorFilter != "" {
+		params = append(params, "actor="+actorFilter)
+	}
+	if actionFilter != "" {
+		params = append(params, "action="+actionFilter)
+	}
+	if sinceFilter != "" {
+		params = append(params, "since="+sinceFilter)
+	}
+	if untilFilter != "" {
+		params = append(params, "until="+untilFilter)
+	}
+	if limitFilter != "" {
+		params = append(params, "limit="+limitFilter)
+	}
+	u += strings.Join(params, "&")
+
+	resp, err := doGet(client, u, operator)
+	if err != nil {
+		connErr(addr)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusForbidden {
+		fmt.Fprintln(os.Stderr, "error: forbidden (super-admin required)")
+		os.Exit(1)
+	}
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "error: unexpected status %d: %s\n", resp.StatusCode, strings.TrimSpace(string(b)))
+		os.Exit(1)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error: failed to read response")
+		os.Exit(1)
+	}
+
+	if jsonOutput {
+		fmt.Println(string(body))
+		return
+	}
+
+	var events []auditEvent
+	if err := json.Unmarshal(body, &events); err != nil {
+		fmt.Fprintln(os.Stderr, "error: failed to decode response")
+		os.Exit(1)
+	}
+
+	if len(events) == 0 {
+		fmt.Println("no audit events found")
+		return
+	}
+
+	fmt.Printf("%-20s  %-12s  %-8s  %-22s  %-20s  %-8s  %s\n",
+		"TIMESTAMP", "ACTOR", "GATE", "ACTION", "TARGET", "DECISION", "REASON")
+	for _, e := range events {
+		ts := e.Timestamp
+		if t, err := time.Parse(time.RFC3339, e.Timestamp); err == nil {
+			ts = t.Local().Format("2006-01-02 15:04:05")
+		}
+		fmt.Printf("%-20s  %-12s  %-8s  %-22s  %-20s  %-8s  %s\n",
+			ts, e.Actor, e.Gate, e.Action, e.Target, e.Decision, e.Reason)
+	}
 }

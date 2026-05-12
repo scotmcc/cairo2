@@ -16,6 +16,7 @@ import (
 
 	"tailscale.com/tsnet"
 
+	"github.com/scotmcc/cairo2/internal/audit"
 	"github.com/scotmcc/cairo2/internal/registryserver"
 )
 
@@ -54,6 +55,10 @@ func main() {
 	}
 	defer ledger.Close()
 
+	sink := audit.NewSQLiteSink(ledger.DB())
+	audit.SetDefaultSink(sink)
+	log.Printf("audit sink: sqlite (%s)", filepath.Join(stateDir, "registry.db"))
+
 	if bootstrapSuperAdmin != "" {
 		if err := ledger.AddSuperAdmin(ctx, bootstrapSuperAdmin); err != nil {
 			log.Fatalf("bootstrap super-admin: %v", err)
@@ -82,7 +87,7 @@ func main() {
 	}
 
 	if adminAddr != "" {
-		adminMux := registryserver.NewAdmin(ledger, startedAt)
+		adminMux := registryserver.NewAdmin(ledger, startedAt, sink)
 		adminSrv := &http.Server{Handler: registryserver.LogRequests(adminMux)}
 		adminLn, err := net.Listen("tcp", adminAddr)
 		if err != nil {

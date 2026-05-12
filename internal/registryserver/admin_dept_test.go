@@ -23,7 +23,7 @@ func TestDeptCreateAndList(t *testing.T) {
 		t.Fatalf("add super-admin: %v", err)
 	}
 
-	h := NewAdmin(l, time.Now())
+	h := NewAdmin(l, time.Now(), nil)
 
 	// Create department.
 	req := httptest.NewRequest("POST", "/departments", strings.NewReader(`{"name":"infra"}`))
@@ -65,7 +65,7 @@ func TestDeptCreateDuplicateName(t *testing.T) {
 		t.Fatalf("add super-admin: %v", err)
 	}
 
-	h := NewAdmin(l, time.Now())
+	h := NewAdmin(l, time.Now(), nil)
 	createDept := func() int {
 		req := httptest.NewRequest("POST", "/departments", strings.NewReader(`{"name":"infra"}`))
 		req.Header.Set("X-Operator-Identity", "admin")
@@ -89,7 +89,7 @@ func TestDeptCreateForbiddenForNonSuperAdmin(t *testing.T) {
 	}
 	defer l.Close()
 
-	h := NewAdmin(l, time.Now())
+	h := NewAdmin(l, time.Now(), nil)
 	req := httptest.NewRequest("POST", "/departments", strings.NewReader(`{"name":"infra"}`))
 	req.Header.Set("X-Operator-Identity", "alice") // not super-admin
 	rr := httptest.NewRecorder()
@@ -117,7 +117,7 @@ func TestAddMemberAndAssignAgent(t *testing.T) {
 		t.Fatalf("register: %v", err)
 	}
 
-	h := NewAdmin(l, time.Now())
+	h := NewAdmin(l, time.Now(), nil)
 
 	// Create dept.
 	req := httptest.NewRequest("POST", "/departments", strings.NewReader(`{"name":"infra"}`))

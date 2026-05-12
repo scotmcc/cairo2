@@ -53,7 +53,27 @@ CREATE TABLE IF NOT EXISTS agent_assignments (
 CREATE TABLE IF NOT EXISTS super_admins (
   user     TEXT PRIMARY KEY,
   added_at INTEGER NOT NULL DEFAULT (unixepoch())
-)`
+);
+CREATE TABLE IF NOT EXISTS audit_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp   INTEGER NOT NULL,
+  actor       TEXT    NOT NULL,
+  gate        TEXT    NOT NULL,
+  action      TEXT    NOT NULL,
+  target      TEXT    NOT NULL,
+  decision    TEXT    NOT NULL,
+  reason      TEXT    NOT NULL DEFAULT '',
+  metadata    TEXT    NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_events(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_actor     ON audit_events(actor, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_gate      ON audit_events(gate, timestamp DESC);
+CREATE TRIGGER IF NOT EXISTS audit_events_no_update
+  BEFORE UPDATE ON audit_events
+BEGIN SELECT RAISE(ABORT, 'audit_events is append-only: UPDATE rejected'); END;
+CREATE TRIGGER IF NOT EXISTS audit_events_no_delete
+  BEFORE DELETE ON audit_events
+BEGIN SELECT RAISE(ABORT, 'audit_events is append-only: DELETE rejected'); END`
 
 // ErrRevoked indicates an attempt to register or use an agent whose status is 'revoked'.
 var ErrRevoked = errors.New("agent revoked")
@@ -396,20 +416,58 @@ func (l *Ledger) AsAccessAdapter() *accessAdapter {
 	return &accessAdapter{l: l}
 }
 
+// DB returns the underlying *sql.DB. Used by the audit SQLite sink so it
+// shares the same connection as the agent ledger. Do not use for ad-hoc
+// queries from other packages — go through typed Ledger methods.
+func (l *Ledger) DB() *sql.DB { return l.db }
+
 // Close closes the underlying database connection.
 func (l *Ledger) Close() error {
 	return l.db.Close()
 }
 
+// execSchema splits s into individual SQL statements and executes each one.
+// It is BEGIN/END-aware: semicolons inside a BEGIN...END block (trigger bodies)
+// are not treated as statement separators.
 func execSchema(db *sql.DB, s string) error {
-	for _, stmt := range strings.Split(s, ";") {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
+	depth := 0
+	start := 0
+	upper := strings.ToUpper(s)
+	for i := 0; i < len(s); i++ {
+		// Track BEGIN...END nesting depth.
+		if i+5 <= len(s) && upper[i:i+5] == "BEGIN" {
+			// Only count BEGIN that is a keyword (preceded/followed by non-alpha).
+			if (i == 0 || !isAlnum(s[i-1])) && (i+5 >= len(s) || !isAlnum(s[i+5])) {
+				depth++
+			}
 		}
+		if i+3 <= len(s) && upper[i:i+3] == "END" {
+			if (i == 0 || !isAlnum(s[i-1])) && (i+3 >= len(s) || !isAlnum(s[i+3])) {
+				if depth > 0 {
+					depth--
+				}
+			}
+		}
+		if s[i] == ';' && depth == 0 {
+			stmt := strings.TrimSpace(s[start:i])
+			start = i + 1
+			if stmt == "" {
+				continue
+			}
+			if _, err := db.Exec(stmt); err != nil {
+				return err
+			}
+		}
+	}
+	// Execute any trailing statement without a final semicolon.
+	if stmt := strings.TrimSpace(s[start:]); stmt != "" {
 		if _, err := db.Exec(stmt); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func isAlnum(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }
