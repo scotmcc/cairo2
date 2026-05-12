@@ -1,0 +1,13 @@
+{
+  "TCP": {
+    "443":  { "HTTPS": true },
+    "6334": { "TCPForward": "127.0.0.1:6334" }
+  },
+  "Web": {
+    "cairo-qdrant.tail1bb4f.ts.net:443": {
+      "Handlers": {
+        "/": { "Proxy": "http://127.0.0.1:6333" }
+      }
+    }
+  }
+}

@@ -1,0 +1,247 @@
+name: cairo-data
+
+# Cairo shared data layer (Qdrant + Neo4j + Postgres + Redis + MinIO),
+# each exposed only on the tailnet via a per-service Tailscale sidecar.
+#
+# No host ports are bound. Every service listens on the internal docker
+# network only; its TS sidecar shares its network namespace
+# (`network_mode: service:<svc>`) and serves the relevant ports onto the
+# tailnet under a per-service hostname (`cairo-<svc>.tail1bb4f.ts.net`).
+#
+# Data: bind mounts under /opt/cairo-data/<service>/ (big disk).
+# Secrets: read from /opt/cairo-data/.env via `--env-file` at the compose CLI.
+
+x-restart: &restart unless-stopped
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+networks:
+  cairo-data:
+    name: cairo-data
+
+services:
+
+  # ===========================================================================
+  # Qdrant — vector DB
+  # ===========================================================================
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: cairo-qdrant
+    restart: *restart
+    logging: *logging
+    networks: [cairo-data]
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+    volumes:
+      - /opt/cairo-data/qdrant/storage:/qdrant/storage
+      - /opt/cairo-data/qdrant/snapshots:/qdrant/snapshots
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  qdrant-ts:
+    image: tailscale/tailscale:v1.80.0
+    container_name: cairo-qdrant-ts
+    restart: *restart
+    logging: *logging
+    depends_on:
+      qdrant: { condition: service_started }
+    network_mode: service:qdrant
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_QDRANT}
+      TS_HOSTNAME: cairo-qdrant
+      TS_CERT_DOMAIN: cairo-qdrant
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_EXTRA_ARGS: --accept-dns=false
+    volumes:
+      - /opt/cairo-data/tailscale/qdrant:/var/lib/tailscale
+      - ./ts-config/qdrant.json:/config/serve.json:ro
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN, NET_RAW]
+
+  # ===========================================================================
+  # Neo4j — graph DB
+  # ===========================================================================
+  neo4j:
+    image: neo4j:5.25-community
+    container_name: cairo-neo4j
+    restart: *restart
+    logging: *logging
+    networks: [cairo-data]
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_server_default__listen__address: 0.0.0.0
+    volumes:
+      - /opt/cairo-data/neo4j/data:/data
+      - /opt/cairo-data/neo4j/logs:/logs
+      - /opt/cairo-data/neo4j/import:/var/lib/neo4j/import
+      - /opt/cairo-data/neo4j/plugins:/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7474 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  neo4j-ts:
+    image: tailscale/tailscale:v1.80.0
+    container_name: cairo-neo4j-ts
+    restart: *restart
+    logging: *logging
+    depends_on:
+      neo4j: { condition: service_started }
+    network_mode: service:neo4j
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_NEO4J}
+      TS_HOSTNAME: cairo-neo4j
+      TS_CERT_DOMAIN: cairo-neo4j
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_EXTRA_ARGS: --accept-dns=false
+    volumes:
+      - /opt/cairo-data/tailscale/neo4j:/var/lib/tailscale
+      - ./ts-config/neo4j.json:/config/serve.json:ro
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN, NET_RAW]
+
+  # ===========================================================================
+  # Postgres — relational DB
+  # ===========================================================================
+  postgres:
+    image: postgres:16
+    container_name: cairo-postgres
+    restart: *restart
+    logging: *logging
+    networks: [cairo-data]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - /opt/cairo-data/postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  postgres-ts:
+    image: tailscale/tailscale:v1.80.0
+    container_name: cairo-postgres-ts
+    restart: *restart
+    logging: *logging
+    depends_on:
+      postgres: { condition: service_started }
+    network_mode: service:postgres
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_POSTGRES}
+      TS_HOSTNAME: cairo-postgres
+      TS_CERT_DOMAIN: cairo-postgres
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_EXTRA_ARGS: --accept-dns=false
+    volumes:
+      - /opt/cairo-data/tailscale/postgres:/var/lib/tailscale
+      - ./ts-config/postgres.json:/config/serve.json:ro
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN, NET_RAW]
+
+  # ===========================================================================
+  # Redis — cache / queue
+  # ===========================================================================
+  redis:
+    image: redis:7.4-alpine
+    container_name: cairo-redis
+    restart: *restart
+    logging: *logging
+    networks: [cairo-data]
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    volumes:
+      - /opt/cairo-data/redis/data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  redis-ts:
+    image: tailscale/tailscale:v1.80.0
+    container_name: cairo-redis-ts
+    restart: *restart
+    logging: *logging
+    depends_on:
+      redis: { condition: service_started }
+    network_mode: service:redis
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_REDIS}
+      TS_HOSTNAME: cairo-redis
+      TS_CERT_DOMAIN: cairo-redis
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_EXTRA_ARGS: --accept-dns=false
+    volumes:
+      - /opt/cairo-data/tailscale/redis:/var/lib/tailscale
+      - ./ts-config/redis.json:/config/serve.json:ro
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN, NET_RAW]
+
+  # ===========================================================================
+  # MinIO — S3-compatible object store
+  # ===========================================================================
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    container_name: cairo-minio
+    restart: *restart
+    logging: *logging
+    networks: [cairo-data]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - /opt/cairo-data/minio/data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  minio-ts:
+    image: tailscale/tailscale:v1.80.0
+    container_name: cairo-minio-ts
+    restart: *restart
+    logging: *logging
+    depends_on:
+      minio: { condition: service_started }
+    network_mode: service:minio
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_MINIO}
+      TS_HOSTNAME: cairo-minio
+      TS_CERT_DOMAIN: cairo-minio
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_EXTRA_ARGS: --accept-dns=false
+    volumes:
+      - /opt/cairo-data/tailscale/minio:/var/lib/tailscale
+      - ./ts-config/minio.json:/config/serve.json:ro
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN, NET_RAW]

@@ -1,0 +1,13 @@
+{
+  "TCP": {
+    "443":  { "HTTPS": true },
+    "9000": { "TCPForward": "127.0.0.1:9000" }
+  },
+  "Web": {
+    "cairo-minio.tail1bb4f.ts.net:443": {
+      "Handlers": {
+        "/": { "Proxy": "http://127.0.0.1:9001" }
+      }
+    }
+  }
+}
