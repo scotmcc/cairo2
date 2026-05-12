@@ -9,15 +9,17 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/scotmcc/cairo2/internal/authn"
 	"github.com/scotmcc/cairo2/internal/store/sqliteopen"
 )
 
 // Options configures the HTTP server at startup.
 type Options struct {
-	Port   int
-	Auth   bool
-	Token  string
-	DBPath string
+	Port     int
+	Auth     bool
+	Token    string
+	DBPath   string
+	Resolver authn.Resolver
 }
 
 // Server owns the HTTP listener, auth middleware, and route registration.

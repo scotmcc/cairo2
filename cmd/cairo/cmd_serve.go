@@ -13,6 +13,8 @@ import (
 	"sync"
 	"syscall"
 
+	"tailscale.com/tsnet"
+
 	"github.com/scotmcc/cairo2/internal/agent"
 	"github.com/scotmcc/cairo2/internal/cli"
 	"github.com/scotmcc/cairo2/internal/registry"
@@ -161,19 +163,12 @@ func runServe(args []string) error {
 	bridge.Start(ctx)
 	defer bridge.Stop()
 
-	opts := server.Options{
-		Port:   port,
-		Auth:   *authFlag,
-		Token:  token,
-		DBPath: cairoDBPath(),
-	}
-	srv := server.New(a, database, bridge, opts)
-
 	var ln net.Listener
+	var tsnetSrv *tsnet.Server
 	if *tsnetFlag {
 		var cleanup func() error
 		var lerr error
-		ln, cleanup, lerr = server.NewTsnetListener(ctx)
+		ln, tsnetSrv, cleanup, lerr = server.NewTsnetListener(ctx)
 		if lerr != nil {
 			return fmt.Errorf("tsnet: %w", lerr)
 		}
@@ -190,6 +185,15 @@ func runServe(args []string) error {
 			return lerr
 		}
 	}
+
+	opts := server.Options{
+		Port:     port,
+		Auth:     *authFlag,
+		Token:    token,
+		DBPath:   cairoDBPath(),
+		Resolver: server.NewResolver(tsnetSrv),
+	}
+	srv := server.New(a, database, bridge, opts)
 
 	if *tsnetFlag {
 		if *authFlag {

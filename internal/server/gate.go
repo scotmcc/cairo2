@@ -13,7 +13,7 @@ import (
 // Returns the caller Identity and true when access is granted, false when denied.
 // On denial, gate writes 403 and the caller must return immediately.
 func (s *Server) gate(w http.ResponseWriter, r *http.Request, action, target string) (authn.Identity, bool) {
-	id, _ := authn.Verify(r)
+	id, _ := authn.VerifyWith(r, s.opts.Resolver)
 	allowed, reason := access.CanAddress(r.Context(), id.User, target)
 	decision := "granted"
 	if !allowed {

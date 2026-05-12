@@ -31,7 +31,7 @@ func sanitizeHostname(raw string) string {
 // NewTsnetListener bootstraps a tsnet node and returns a TLS listener on :443.
 // cleanup must be called when the caller is done (typically via defer).
 // On first run, prints a LoginURL to stdout so the operator can authorize the node.
-func NewTsnetListener(ctx context.Context) (net.Listener, func() error, error) {
+func NewTsnetListener(ctx context.Context) (net.Listener, *tsnet.Server, func() error, error) {
 	raw, _ := os.Hostname()
 	bare := raw
 	if idx := strings.IndexByte(raw, '.'); idx >= 0 {
@@ -45,7 +45,7 @@ func NewTsnetListener(ctx context.Context) (net.Listener, func() error, error) {
 	}
 	stateDir := filepath.Join(homeDir, ".cairo", "tsnet")
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		return nil, nil, fmt.Errorf("tsnet state dir: %w", err)
+		return nil, nil, nil, fmt.Errorf("tsnet state dir: %w", err)
 	}
 
 	srv := &tsnet.Server{
@@ -56,7 +56,7 @@ func NewTsnetListener(ctx context.Context) (net.Listener, func() error, error) {
 	cleanup := func() error { return srv.Close() }
 
 	if err := srv.Start(); err != nil {
-		return nil, nil, fmt.Errorf("tsnet start: %w", err)
+		return nil, nil, nil, fmt.Errorf("tsnet start: %w", err)
 	}
 
 	// Poll for LoginURL in the background so the operator can authorize on first run.
@@ -90,7 +90,7 @@ func NewTsnetListener(ctx context.Context) (net.Listener, func() error, error) {
 	st, err := srv.Up(ctx)
 	if err != nil {
 		_ = cleanup()
-		return nil, nil, fmt.Errorf("tsnet up: %w", err)
+		return nil, nil, nil, fmt.Errorf("tsnet up: %w", err)
 	}
 
 	if st != nil && st.Self != nil {
@@ -101,8 +101,8 @@ func NewTsnetListener(ctx context.Context) (net.Listener, func() error, error) {
 	ln, err := srv.ListenTLS("tcp", ":443")
 	if err != nil {
 		_ = cleanup()
-		return nil, nil, fmt.Errorf("tsnet listen: %w", err)
+		return nil, nil, nil, fmt.Errorf("tsnet listen: %w", err)
 	}
 
-	return ln, cleanup, nil
+	return ln, srv, cleanup, nil
 }
