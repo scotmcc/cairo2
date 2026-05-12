@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tsnet"
 
 	"github.com/scotmcc/cairo2/internal/access"
@@ -43,7 +42,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
 	s.mux.HandleFunc("POST /register", s.handleRegister)
 	s.mux.HandleFunc("GET /agents", s.handleAgents)
-	ws := newWsHandler(s.ledger, s.decider)
+	ws := newWsHandler(s.ledger, s.decider, s.resolver())
 	s.mux.HandleFunc("GET /agents/{id}/stream", ws.handle)
 }
 
@@ -96,7 +95,8 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if _, ok := gateWith(s.decider, w, r, "agent.register", "agents"); !ok {
+	id, ok := gateWith(s.decider, s.resolver(), w, r, "agent.register", "agents")
+	if !ok {
 		return
 	}
 	var req protocol.RegisterRequest
@@ -105,22 +105,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var owner string
-	if s.tsnetSrv != nil {
-		lc, err := s.tsnetSrv.LocalClient()
-		if err == nil {
-			who, _ := lc.WhoIs(r.Context(), r.RemoteAddr)
-			owner = ownerFromWhoIs(who)
-		} else {
-			owner = "unknown"
-		}
-	} else {
-		owner = "local"
-	}
-
-	if owner == "unknown" {
-		log.Printf("register: WhoIs returned unknown owner for %s", r.RemoteAddr)
-	}
+	owner := id.User
 
 	agentID, registeredAt, err := s.ledger.Register(r.Context(), req.AgentID, owner, req.Hostname, req.TailnetNode, req.Version)
 	if err != nil {
@@ -171,7 +156,7 @@ func LogRequests(h http.Handler) http.Handler {
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
-	id, ok := gateWith(s.decider, w, r, "agent.list", "agents")
+	id, ok := gateWith(s.decider, s.resolver(), w, r, "agent.list", "agents")
 	if !ok {
 		return
 	}
@@ -199,15 +184,3 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(agents)
 }
 
-func ownerFromWhoIs(who *apitype.WhoIsResponse) string {
-	if who == nil {
-		return "unknown"
-	}
-	if who.UserProfile != nil && who.UserProfile.LoginName != "" {
-		return who.UserProfile.LoginName
-	}
-	if who.Node != nil && len(who.Node.Tags) > 0 {
-		return who.Node.Tags[0]
-	}
-	return "unknown"
-}

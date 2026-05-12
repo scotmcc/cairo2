@@ -53,7 +53,7 @@ func operatorFromHeader(r *http.Request) string {
 
 func handleAdminAgents(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, ok := gateWith(decider, w, r, "agent.list", "agents")
+		id, ok := gateWith(decider, nil, w, r, "agent.list", "agents")
 		if !ok {
 			return
 		}
@@ -85,7 +85,7 @@ func handleAdminAgents(ledger *Ledger, decider *access.Decider) http.HandlerFunc
 func handleAdminAgent(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		agentID := r.PathValue("id")
-		if _, ok := gateWith(decider, w, r, "agent.get", agentID); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "agent.get", agentID); !ok {
 			return
 		}
 		operator := operatorFromHeader(r)
@@ -110,7 +110,7 @@ func handleAdminAgent(ledger *Ledger, decider *access.Decider) http.HandlerFunc 
 func handleAdminRevoke(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		agentID := r.PathValue("id")
-		if _, ok := gateWith(decider, w, r, "agent.revoke", agentID); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "agent.revoke", agentID); !ok {
 			return
 		}
 		operator := operatorFromHeader(r)
@@ -134,7 +134,7 @@ func handleAdminRevoke(ledger *Ledger, decider *access.Decider) http.HandlerFunc
 
 func handleAdminBroadcast(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := gateWith(decider, w, r, "broadcast", "broadcast"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "broadcast", "broadcast"); !ok {
 			return
 		}
 		operator := operatorFromHeader(r)
@@ -171,7 +171,7 @@ func handleAdminHealthz(ledger *Ledger, startedAt time.Time) http.HandlerFunc {
 
 func handleDeptList(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := gateWith(decider, w, r, "department.list", "departments"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "department.list", "departments"); !ok {
 			return
 		}
 		depts, err := ledger.ListDepartments(r.Context())
@@ -189,7 +189,7 @@ func handleDeptList(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 
 func handleDeptCreate(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := gateWith(decider, w, r, "department.create", "departments"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "department.create", "departments"); !ok {
 			return
 		}
 		var body struct {
@@ -221,7 +221,7 @@ func handleDeptCreate(ledger *Ledger, decider *access.Decider) http.HandlerFunc 
 func handleDeptMemberList(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		deptID := r.PathValue("dept_id")
-		if _, ok := gateWith(decider, w, r, "department.member.list", "departments"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "department.member.list", "departments"); !ok {
 			return
 		}
 		members, err := ledger.ListMembers(r.Context(), deptID)
@@ -244,7 +244,7 @@ func handleDeptMemberList(ledger *Ledger, decider *access.Decider) http.HandlerF
 func handleDeptMemberAdd(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		deptID := r.PathValue("dept_id")
-		if _, ok := gateWith(decider, w, r, "department.member.add", "departments"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "department.member.add", "departments"); !ok {
 			return
 		}
 		var body struct {
@@ -273,7 +273,7 @@ func handleDeptMemberRemove(ledger *Ledger, decider *access.Decider) http.Handle
 	return func(w http.ResponseWriter, r *http.Request) {
 		deptID := r.PathValue("dept_id")
 		user := r.PathValue("user")
-		if _, ok := gateWith(decider, w, r, "department.member.remove", "departments"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "department.member.remove", "departments"); !ok {
 			return
 		}
 		if err := ledger.RemoveMember(r.Context(), deptID, user); err != nil {
@@ -294,7 +294,7 @@ func handleDeptMemberRemove(ledger *Ledger, decider *access.Decider) http.Handle
 func handleAgentAssign(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		agentID := r.PathValue("id")
-		if _, ok := gateWith(decider, w, r, "agent.assign", "departments"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "agent.assign", "departments"); !ok {
 			return
 		}
 		var body struct {
@@ -322,7 +322,7 @@ func handleAgentAssign(ledger *Ledger, decider *access.Decider) http.HandlerFunc
 
 func handleSuperAdminList(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := gateWith(decider, w, r, "super-admin.list", "super-admins"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "super-admin.list", "super-admins"); !ok {
 			return
 		}
 		users, err := ledger.ListSuperAdmins(r.Context())
@@ -340,7 +340,7 @@ func handleSuperAdminList(ledger *Ledger, decider *access.Decider) http.HandlerF
 
 func handleSuperAdminAdd(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := gateWith(decider, w, r, "super-admin.add", "super-admins"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "super-admin.add", "super-admins"); !ok {
 			return
 		}
 		var body struct {
@@ -363,7 +363,7 @@ func handleSuperAdminAdd(ledger *Ledger, decider *access.Decider) http.HandlerFu
 func handleSuperAdminRemove(ledger *Ledger, decider *access.Decider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := r.PathValue("user")
-		if _, ok := gateWith(decider, w, r, "super-admin.remove", "super-admins"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "super-admin.remove", "super-admins"); !ok {
 			return
 		}
 		if err := ledger.RemoveSuperAdmin(r.Context(), user); err != nil {
@@ -379,7 +379,7 @@ func handleSuperAdminRemove(ledger *Ledger, decider *access.Decider) http.Handle
 
 func handleAdminAudit(decider *access.Decider, reader audit.Reader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := gateWith(decider, w, r, "audit.list", "audit"); !ok {
+		if _, ok := gateWith(decider, nil, w, r, "audit.list", "audit"); !ok {
 			return
 		}
 		if reader == nil {

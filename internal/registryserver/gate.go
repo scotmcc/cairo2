@@ -17,12 +17,12 @@ import (
 // before the Decider was available — kept for backward compat). New handlers
 // should use gateWith instead.
 func gate(w http.ResponseWriter, r *http.Request, action, target string) (authn.Identity, bool) {
-	return gateWith(nil, w, r, action, target)
+	return gateWith(nil, nil, w, r, action, target)
 }
 
 // gateWith is the real gate: uses decider when non-nil, falls back to no-op stub.
-func gateWith(d *access.Decider, w http.ResponseWriter, r *http.Request, action, target string) (authn.Identity, bool) {
-	id, _ := authn.Verify(r)
+func gateWith(d *access.Decider, resolver authn.Resolver, w http.ResponseWriter, r *http.Request, action, target string) (authn.Identity, bool) {
+	id, _ := authn.VerifyWith(r, resolver)
 	var allowed bool
 	var reason string
 	if d != nil {
