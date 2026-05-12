@@ -22,11 +22,19 @@ Usage:
   cairo-ctl [flags] <subcommand> [args]
 
 Subcommands:
-  list                  List all agents visible to --operator
-  get <agent-id>        Show details for a single agent
-  health                Show registry health status
-  revoke <agent-id>     Revoke an agent (marks status=revoked, rejects re-register)
-  broadcast <command>   Persist a broadcast command to the registry command queue
+  list                              List all agents visible to --operator
+  get <agent-id>                    Show details for a single agent
+  health                            Show registry health status
+  revoke <agent-id>                 Revoke an agent (marks status=revoked, rejects re-register)
+  broadcast <command>               Persist a broadcast command to the registry command queue
+  assign <agent-id> <type> [dept]   Set agent assignment (type: personal|departmental|enterprise)
+  departments list                  List departments
+  departments create <name>         Create a department
+  departments members add <dept> <user> <role>    Add user to department
+  departments members remove <dept> <user>        Remove user from department
+  super-admins list                 List super-admins
+  super-admins add <user>           Add super-admin
+  super-admins remove <user>        Remove super-admin
 
 Flags:
   --addr string     Admin listener address (default "127.0.0.1:8081")
@@ -111,6 +119,21 @@ func main() {
 			os.Exit(1)
 		}
 		cmdBroadcast(client, addr, operator, args[1])
+	case "assign":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "error: assign requires <agent-id> <type> [dept]")
+			usage()
+			os.Exit(1)
+		}
+		dept := ""
+		if len(args) > 3 {
+			dept = args[3]
+		}
+		cmdAssign(client, addr, operator, args[1], args[2], dept)
+	case "departments":
+		cmdDepartments(client, addr, operator, args[1:])
+	case "super-admins":
+		cmdSuperAdmins(client, addr, operator, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "error: unknown subcommand %q\n\n", args[0])
 		usage()
@@ -264,6 +287,236 @@ func cmdGet(client *http.Client, addr, operator, id string) {
 	fmt.Printf("ws_connected:  %d\n", a.WsConnected)
 	fmt.Printf("registered_at: %s\n", time.Unix(a.RegisteredAt, 0).UTC().Format(time.RFC3339))
 	fmt.Printf("last_seen_at:  %s (%s)\n", time.Unix(a.LastSeenAt, 0).UTC().Format(time.RFC3339), agoStr(a.LastSeenAt))
+}
+
+func doDelete(client *http.Client, addr, path, operator string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodDelete, "http://"+addr+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if operator != "" {
+		req.Header.Set("X-Operator-Identity", operator)
+	}
+	return client.Do(req)
+}
+
+func cmdAssign(client *http.Client, addr, operator, agentID, agentType, dept string) {
+	body, _ := json.Marshal(map[string]string{"agent_type": agentType, "dept_id": dept})
+	resp, err := doPost(client, addr, "/agents/"+agentID+"/assign", operator, bytes.NewReader(body))
+	if err != nil {
+		connErr(addr)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusForbidden {
+		fmt.Fprintln(os.Stderr, "error: forbidden (super-admin required)")
+		os.Exit(1)
+	}
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "error: unexpected status %d: %s\n", resp.StatusCode, strings.TrimSpace(string(b)))
+		os.Exit(1)
+	}
+	fmt.Printf("assigned %s as %s", agentID, agentType)
+	if dept != "" {
+		fmt.Printf(" in %s", dept)
+	}
+	fmt.Println()
+}
+
+func cmdDepartments(client *http.Client, addr, operator string, args []string) {
+	if len(args) == 0 || args[0] == "list" {
+		resp, err := doGet(client, "http://"+addr+"/departments", operator)
+		if err != nil {
+			connErr(addr)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusForbidden {
+			fmt.Fprintln(os.Stderr, "error: forbidden (super-admin required)")
+			os.Exit(1)
+		}
+		var depts []struct {
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			CreatedAt int64  `json:"created_at"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&depts); err != nil {
+			fmt.Fprintln(os.Stderr, "error: failed to decode response")
+			os.Exit(1)
+		}
+		if len(depts) == 0 {
+			fmt.Println("no departments found")
+			return
+		}
+		fmt.Printf("%-32s\t%s\n", "ID", "NAME")
+		for _, d := range depts {
+			fmt.Printf("%-32s\t%s\n", d.ID, d.Name)
+		}
+		return
+	}
+
+	switch args[0] {
+	case "create":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "error: departments create requires <name>")
+			os.Exit(1)
+		}
+		body, _ := json.Marshal(map[string]string{"name": args[1]})
+		resp, err := doPost(client, addr, "/departments", operator, bytes.NewReader(body))
+		if err != nil {
+			connErr(addr)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusForbidden {
+			fmt.Fprintln(os.Stderr, "error: forbidden (super-admin required)")
+			os.Exit(1)
+		}
+		if resp.StatusCode == http.StatusConflict {
+			fmt.Fprintf(os.Stderr, "error: department %q already exists\n", args[1])
+			os.Exit(1)
+		}
+		if resp.StatusCode != http.StatusCreated {
+			fmt.Fprintf(os.Stderr, "error: unexpected status %d\n", resp.StatusCode)
+			os.Exit(1)
+		}
+		fmt.Printf("created department %q\n", args[1])
+
+	case "members":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "error: departments members requires add|remove")
+			os.Exit(1)
+		}
+		switch args[1] {
+		case "add":
+			if len(args) < 5 {
+				fmt.Fprintln(os.Stderr, "error: departments members add requires <dept> <user> <role>")
+				os.Exit(1)
+			}
+			dept, user, role := args[2], args[3], args[4]
+			body, _ := json.Marshal(map[string]string{"user": user, "role": role})
+			resp, err := doPost(client, addr, "/departments/"+dept+"/members", operator, bytes.NewReader(body))
+			if err != nil {
+				connErr(addr)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusForbidden {
+				fmt.Fprintln(os.Stderr, "error: forbidden (super-admin required)")
+				os.Exit(1)
+			}
+			if resp.StatusCode == http.StatusNotFound {
+				fmt.Fprintf(os.Stderr, "error: department %q not found\n", dept)
+				os.Exit(1)
+			}
+			if resp.StatusCode != http.StatusCreated {
+				b, _ := io.ReadAll(resp.Body)
+				fmt.Fprintf(os.Stderr, "error: unexpected status %d: %s\n", resp.StatusCode, strings.TrimSpace(string(b)))
+				os.Exit(1)
+			}
+			fmt.Printf("added %s to %s as %s\n", user, dept, role)
+
+		case "remove":
+			if len(args) < 4 {
+				fmt.Fprintln(os.Stderr, "error: departments members remove requires <dept> <user>")
+				os.Exit(1)
+			}
+			dept, user := args[2], args[3]
+			resp, err := doDelete(client, addr, "/departments/"+dept+"/members/"+user, operator)
+			if err != nil {
+				connErr(addr)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusForbidden {
+				fmt.Fprintln(os.Stderr, "error: forbidden (super-admin required)")
+				os.Exit(1)
+			}
+			if resp.StatusCode != http.StatusOK {
+				fmt.Fprintf(os.Stderr, "error: unexpected status %d\n", resp.StatusCode)
+				os.Exit(1)
+			}
+			fmt.Printf("removed %s from %s\n", user, dept)
+
+		default:
+			fmt.Fprintf(os.Stderr, "error: unknown departments members subcommand %q\n", args[1])
+			os.Exit(1)
+		}
+
+	default:
+		fmt.Fprintf(os.Stderr, "error: unknown departments subcommand %q\n", args[0])
+		os.Exit(1)
+	}
+}
+
+func cmdSuperAdmins(client *http.Client, addr, operator string, args []string) {
+	if len(args) == 0 || args[0] == "list" {
+		resp, err := doGet(client, "http://"+addr+"/super-admins", operator)
+		if err != nil {
+			connErr(addr)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusForbidden {
+			fmt.Fprintln(os.Stderr, "error: forbidden (super-admin required)")
+			os.Exit(1)
+		}
+		var users []string
+		if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+			fmt.Fprintln(os.Stderr, "error: failed to decode response")
+			os.Exit(1)
+		}
+		if len(users) == 0 {
+			fmt.Println("no super-admins found")
+			return
+		}
+		for _, u := range users {
+			fmt.Println(u)
+		}
+		return
+	}
+
+	switch args[0] {
+	case "add":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "error: super-admins add requires <user>")
+			os.Exit(1)
+		}
+		body, _ := json.Marshal(map[string]string{"user": args[1]})
+		resp, err := doPost(client, addr, "/super-admins", operator, bytes.NewReader(body))
+		if err != nil {
+			connErr(addr)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusForbidden {
+			fmt.Fprintln(os.Stderr, "error: forbidden (super-admin required)")
+			os.Exit(1)
+		}
+		if resp.StatusCode != http.StatusCreated {
+			fmt.Fprintf(os.Stderr, "error: unexpected status %d\n", resp.StatusCode)
+			os.Exit(1)
+		}
+		fmt.Printf("added super-admin %s\n", args[1])
+
+	case "remove":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "error: super-admins remove requires <user>")
+			os.Exit(1)
+		}
+		resp, err := doDelete(client, addr, "/super-admins/"+args[1], operator)
+		if err != nil {
+			connErr(addr)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusForbidden {
+			fmt.Fprintln(os.Stderr, "error: forbidden (super-admin required)")
+			os.Exit(1)
+		}
+		if resp.StatusCode != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "error: unexpected status %d\n", resp.StatusCode)
+			os.Exit(1)
+		}
+		fmt.Printf("removed super-admin %s\n", args[1])
+
+	default:
+		fmt.Fprintf(os.Stderr, "error: unknown super-admins subcommand %q\n", args[0])
+		os.Exit(1)
+	}
 }
 
 func cmdHealth(client *http.Client, addr string) {

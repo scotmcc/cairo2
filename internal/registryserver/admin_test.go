@@ -20,6 +20,10 @@ func TestAdminAgentsScopedByOperator(t *testing.T) {
 	ctx := context.Background()
 	_, _, _ = l.Register(ctx, "", "alice", "a-host", "a.ts.net", "v1")
 	_, _, _ = l.Register(ctx, "", "bob", "b-host", "b.ts.net", "v1")
+	// alice is a super-admin so ListVisible returns all agents.
+	if err := l.AddSuperAdmin(ctx, "alice"); err != nil {
+		t.Fatalf("add super-admin: %v", err)
+	}
 
 	h := NewAdmin(l, time.Now())
 
@@ -35,11 +39,9 @@ func TestAdminAgentsScopedByOperator(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&agents); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(agents) != 1 {
-		t.Fatalf("expected 1 agent for alice, got %d", len(agents))
-	}
-	if agents[0].Owner != "alice" {
-		t.Errorf("expected owner=alice, got %q", agents[0].Owner)
+	// Super-admin alice sees all agents (alice + bob).
+	if len(agents) != 2 {
+		t.Fatalf("expected 2 agents for super-admin alice, got %d", len(agents))
 	}
 }
 

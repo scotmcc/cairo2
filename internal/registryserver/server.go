@@ -12,12 +12,14 @@ import (
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tsnet"
 
+	"github.com/scotmcc/cairo2/internal/access"
 	"github.com/scotmcc/cairo2/internal/protocol"
 )
 
 // Server handles HTTP for the registry.
 type Server struct {
 	ledger    *Ledger
+	decider   *access.Decider
 	tsnetSrv  *tsnet.Server
 	mux       *http.ServeMux
 	httpSrv   *http.Server
@@ -28,6 +30,7 @@ type Server struct {
 func New(ledger *Ledger, tsnetSrv *tsnet.Server, startedAt time.Time) *Server {
 	s := &Server{
 		ledger:    ledger,
+		decider:   access.New(ledger.AsAccessAdapter()),
 		tsnetSrv:  tsnetSrv,
 		mux:       http.NewServeMux(),
 		startedAt: startedAt,
@@ -40,7 +43,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
 	s.mux.HandleFunc("POST /register", s.handleRegister)
 	s.mux.HandleFunc("GET /agents", s.handleAgents)
-	ws := newWsHandler(s.ledger)
+	ws := newWsHandler(s.ledger, s.decider)
 	s.mux.HandleFunc("GET /agents/{id}/stream", ws.handle)
 }
 
@@ -93,7 +96,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if _, ok := gate(w, r, "agent.register", "agents"); !ok {
+	if _, ok := gateWith(s.decider, w, r, "agent.register", "agents"); !ok {
 		return
 	}
 	var req protocol.RegisterRequest
@@ -168,16 +171,29 @@ func LogRequests(h http.Handler) http.Handler {
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
-	if _, ok := gate(w, r, "agent.list", "agents"); !ok {
+	id, ok := gateWith(s.decider, w, r, "agent.list", "agents")
+	if !ok {
 		return
 	}
-	agents, err := s.ledger.List(r.Context())
+	visibleIDs, err := s.decider.ListVisible(r.Context(), id.User)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	if agents == nil {
-		agents = []Agent{}
+	all, err := s.ledger.List(r.Context())
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	idSet := make(map[string]bool, len(visibleIDs))
+	for _, v := range visibleIDs {
+		idSet[v] = true
+	}
+	agents := []Agent{}
+	for _, a := range all {
+		if idSet[a.AgentID] {
+			agents = append(agents, a)
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(agents)

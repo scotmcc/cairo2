@@ -12,9 +12,24 @@ import (
 // gate runs the ZT gate for a single handler call: Verify → CanAddress → Log.
 // Returns the caller Identity and true when access is granted, false when denied.
 // On denial, gate writes 403 and the caller must return immediately.
+//
+// This package-level gate uses the no-op access.CanAddress (for handlers wired
+// before the Decider was available — kept for backward compat). New handlers
+// should use gateWith instead.
 func gate(w http.ResponseWriter, r *http.Request, action, target string) (authn.Identity, bool) {
+	return gateWith(nil, w, r, action, target)
+}
+
+// gateWith is the real gate: uses decider when non-nil, falls back to no-op stub.
+func gateWith(d *access.Decider, w http.ResponseWriter, r *http.Request, action, target string) (authn.Identity, bool) {
 	id, _ := authn.Verify(r)
-	allowed, reason := access.CanAddress(r.Context(), id.User, target)
+	var allowed bool
+	var reason string
+	if d != nil {
+		allowed, reason = d.CanAddress(r.Context(), id.User, target)
+	} else {
+		allowed, reason = access.CanAddress(r.Context(), id.User, target)
+	}
 	decision := "granted"
 	if !allowed {
 		decision = "denied"

@@ -27,11 +27,13 @@ func main() {
 	var adminAddr string
 	var noTsnet bool
 	var versionFlag bool
+	var bootstrapSuperAdmin string
 	flag.StringVar(&stateDir, "state-dir", stateDir, "state directory (default ~/.cairo-registry)")
 	flag.StringVar(&addr, "addr", ":443", "listen address (--no-tsnet only)")
 	flag.StringVar(&adminAddr, "admin-addr", "127.0.0.1:8081", "loopback admin listener address; empty string disables")
 	flag.BoolVar(&noTsnet, "no-tsnet", false, "listen on plain TCP for local dev")
 	flag.BoolVar(&versionFlag, "version", false, "print version and exit")
+	flag.StringVar(&bootstrapSuperAdmin, "bootstrap-super-admin", "", "seed this user as super-admin on first boot (idempotent)")
 	flag.Parse()
 
 	if versionFlag {
@@ -51,6 +53,13 @@ func main() {
 		log.Fatalf("ledger: %v", err)
 	}
 	defer ledger.Close()
+
+	if bootstrapSuperAdmin != "" {
+		if err := ledger.AddSuperAdmin(ctx, bootstrapSuperAdmin); err != nil {
+			log.Fatalf("bootstrap super-admin: %v", err)
+		}
+		log.Printf("bootstrap super-admin: %s", bootstrapSuperAdmin)
+	}
 
 	startedAt := time.Now()
 

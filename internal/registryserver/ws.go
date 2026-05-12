@@ -10,22 +10,24 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	"github.com/scotmcc/cairo2/internal/access"
 	"github.com/scotmcc/cairo2/internal/protocol"
 )
 
 type wsHandler struct {
 	ledger       *Ledger
+	decider      *access.Decider
 	pingInterval time.Duration
 }
 
-func newWsHandler(ledger *Ledger) *wsHandler {
-	return &wsHandler{ledger: ledger, pingInterval: 10 * time.Second}
+func newWsHandler(ledger *Ledger, decider *access.Decider) *wsHandler {
+	return &wsHandler{ledger: ledger, decider: decider, pingInterval: 10 * time.Second}
 }
 
 func (h *wsHandler) handle(w http.ResponseWriter, r *http.Request) {
 	agentID := r.PathValue("id")
 
-	if _, ok := gate(w, r, "agent.stream", agentID); !ok {
+	if _, ok := gateWith(h.decider, w, r, "agent.stream", agentID); !ok {
 		return
 	}
 

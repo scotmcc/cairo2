@@ -30,6 +30,29 @@ CREATE TABLE IF NOT EXISTS commands (
   operator   TEXT NOT NULL,
   command    TEXT NOT NULL,
   created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS departments (
+  id         TEXT PRIMARY KEY,
+  name       TEXT UNIQUE NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE TABLE IF NOT EXISTS department_members (
+  dept_id    TEXT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  user       TEXT NOT NULL,
+  role       TEXT NOT NULL,
+  added_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+  PRIMARY KEY (dept_id, user)
+);
+CREATE INDEX IF NOT EXISTS idx_dept_members_user ON department_members(user);
+CREATE TABLE IF NOT EXISTS agent_assignments (
+  agent_id   TEXT PRIMARY KEY REFERENCES agents(agent_id) ON DELETE CASCADE,
+  agent_type TEXT NOT NULL,
+  dept_id    TEXT NULL REFERENCES departments(id) ON DELETE SET NULL,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE TABLE IF NOT EXISTS super_admins (
+  user     TEXT PRIMARY KEY,
+  added_at INTEGER NOT NULL DEFAULT (unixepoch())
 )`
 
 // ErrRevoked indicates an attempt to register or use an agent whose status is 'revoked'.
@@ -345,6 +368,32 @@ func (l *Ledger) InsertCommand(ctx context.Context, operator, command string) er
 		operator, command, time.Now().Unix(),
 	)
 	return err
+}
+
+// ListAll returns all agents ordered by last_seen_at descending.
+// Used by the access Decider to build the visibility list.
+func (l *Ledger) ListAll(ctx context.Context) ([]Agent, error) {
+	return l.List(ctx)
+}
+
+// GetAgentOwner returns the owner of agentID (owner, found, err).
+func (l *Ledger) GetAgentOwner(ctx context.Context, agentID string) (string, bool, error) {
+	var owner string
+	err := l.db.QueryRowContext(ctx,
+		`SELECT owner FROM agents WHERE agent_id = ?`, agentID,
+	).Scan(&owner)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return owner, true, nil
+}
+
+// AsAccessAdapter returns an accessAdapter that satisfies access.Ledger using this Ledger.
+func (l *Ledger) AsAccessAdapter() *accessAdapter {
+	return &accessAdapter{l: l}
 }
 
 // Close closes the underlying database connection.
