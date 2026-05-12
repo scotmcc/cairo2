@@ -1,25 +1,51 @@
-// Package authn provides identity verification at HTTP gate boundaries.
-//
-// Phase 4.1: no-op stub. Verify extracts X-Operator-Identity header
-// (matching cmd/cairo-ctl convention) and returns it as Identity.User.
-// Phase 4.4 will replace this with real tsnet peer-cert identity extraction.
 package authn
 
-import "net/http"
+import (
+	"context"
+	"net/http"
 
-// Identity is the verified caller of an HTTP request.
+	"tailscale.com/client/tailscale/apitype"
+)
+
 type Identity struct {
-	User   string // identity string (email, username, "local")
-	Source string // where the identity came from: "header", "tsnet", "local"
+	User    string
+	Source  string
+	NodeKey string
+	Tags    []string
 }
 
-// Verify extracts identity from the request. In the Phase 4.1 stub,
-// this reads X-Operator-Identity and falls back to "local" when absent.
-// Never returns an error in the stub. Phase 4.4 will introduce real
-// verification and may return errors.
-func Verify(r *http.Request) (Identity, error) {
+type Resolver interface {
+	WhoIs(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error)
+}
+
+func VerifyWith(r *http.Request, resolver Resolver) (Identity, error) {
+	if resolver != nil {
+		resp, err := resolver.WhoIs(r.Context(), r.RemoteAddr)
+		if err == nil && resp != nil {
+			var loginName string
+			if resp.UserProfile != nil {
+				loginName = resp.UserProfile.LoginName
+			}
+			var nodeKey string
+			var tags []string
+			if resp.Node != nil {
+				nodeKey = resp.Node.Key.String()
+				tags = resp.Node.Tags
+			}
+			if loginName != "" {
+				return Identity{User: loginName, Source: "tsnet", NodeKey: nodeKey, Tags: tags}, nil
+			}
+			if len(tags) > 0 {
+				return Identity{User: tags[0], Source: "tsnet", NodeKey: nodeKey, Tags: tags}, nil
+			}
+		}
+	}
 	if v := r.Header.Get("X-Operator-Identity"); v != "" {
 		return Identity{User: v, Source: "header"}, nil
 	}
 	return Identity{User: "local", Source: "local"}, nil
+}
+
+func Verify(r *http.Request) (Identity, error) {
+	return VerifyWith(r, nil)
 }
